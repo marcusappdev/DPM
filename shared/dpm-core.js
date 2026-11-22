@@ -31,6 +31,51 @@ const r2 = v => Math.round(num(v) * 100) / 100;
 const kina = v => "K" + num(v).toLocaleString("en-AU", { minimumFractionDigits:2, maximumFractionDigits:2 });
 const kinaShort = v => { const n = num(v); return n >= 1e6 ? "K" + (n/1e6).toFixed(2) + "M" : n >= 1e4 ? "K" + Math.round(n/1e3) + "k" : kina(n); };
 const norm = s => String(s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+/* ---------------- the Hub's own dialogs (instead of the browser's "…github.io says" boxes) ----------------
+   ask()       -> Promise<boolean>  question with two buttons
+   tell()      -> Promise           a notice with OK
+   showError() -> Promise           an error with "Copy details", so the exact message can be passed on */
+function msgDialog(html, focusSel){
+  return new Promise(resolve => {
+    const d = $("#dlgMsg");
+    d.innerHTML = html;
+    d.onclick = e => {
+      const b = e.target.closest("[data-a]"); if (!b) return;
+      if (b.dataset.a === "copy"){ copyText(d.querySelector(".errdetails").textContent, b); return; }
+      d.close(); resolve(b.dataset.a === "1");
+    };
+    d.oncancel = e => { e.preventDefault(); d.close(); resolve(false); };
+    d.showModal();
+    d.querySelector(focusSel || '[data-a="1"]')?.focus();
+  });
+}
+function ask(message, { title = "Please confirm", ok = "OK", cancel = "Cancel", danger = false } = {}){
+  return msgDialog(`<div class="dh"><div class="dt"><span class="kind" ${danger ? 'style="background:var(--crit)"' : ""}>${esc(title)}</span></div></div>
+    <div class="db"><p class="msg">${esc(message)}</p></div>
+    <div class="df"><button class="btn" data-a="0">${esc(cancel)}</button><button class="btn primary" data-a="1" ${danger ? 'style="background:var(--crit);border-color:var(--crit)"' : ""}>${esc(ok)}</button></div>`);
+}
+function tell(message, { title = "Note" } = {}){
+  return msgDialog(`<div class="dh"><div class="dt"><span class="kind">${esc(title)}</span></div></div>
+    <div class="db"><p class="msg">${esc(message)}</p></div>
+    <div class="df"><button class="btn primary" data-a="1">OK</button></div>`);
+}
+function showError(title, err, hint = ""){
+  const msg = err && err.message ? err.message : String(err ?? "");
+  console.error(title, err);
+  const now = new Date();
+  const details = [`What: ${title}`, msg ? `Message: ${msg}` : "", err?.status ? `Status: ${err.status}` : "",
+    `Screen: ${location.hash || "#dash"}`, `User: ${typeof me === "object" && me.name ? `${me.name} (${me.role})` : "-"}`,
+    `When: ${ymd(now)} ${hhmm(now)}`, `App: ${location.origin}${location.pathname}`].filter(Boolean).join("\n");
+  return msgDialog(`<div class="dh"><div class="dt"><span class="kind" style="background:var(--crit)">Problem</span><h2>${esc(title)}</h2></div></div>
+    <div class="db">${hint ? `<p class="msg">${esc(hint)}</p>` : ""}${msg ? `<p class="msg"><b>${esc(msg)}</b></p>` : ""}
+      <details><summary class="note">Details to send if you need help</summary><pre class="errdetails">${esc(details)}</pre></details></div>
+    <div class="df"><button class="btn" data-a="copy">Copy details</button><button class="btn primary" data-a="1">OK</button></div>`);
+}
+async function copyText(text, btn){
+  try { await navigator.clipboard.writeText(text); }
+  catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+  if (btn){ const o = btn.textContent; btn.textContent = "Copied ✓"; setTimeout(() => btn.textContent = o, 1500); }
+}
 function toast(msg){ const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("on"), 2800); }
 
 /* ---------------- auth (MSAL, PKCE) ---------------- */

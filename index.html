@@ -56,6 +56,11 @@ header .rolesel{background:#1d3550;color:#fff;border:1px solid rgba(255,255,255,
 .readonly input,.readonly select,.readonly textarea{pointer-events:none;background:var(--grey-bg)!important}
 .kpi.k-b{--kc:#1d4e89}.kpi.k-p{--kc:#b45309}.kpi.k-a{--kc:#15803d}.kpi.k-r{--kc:#b91c1c}.kpi.k-h{--kc:#7c3aed}.kpi.k-g{--kc:#0f8a80}.kpi.k-s{--kc:#c8962e}
 .kpi .v.sm{font-size:22px}
+/* the Hub's own message dialog */
+.msgdlg{width:min(520px,92vw)}
+.msgdlg .msg{white-space:pre-wrap;margin:0 0 10px;line-height:1.5}
+.msgdlg .errdetails{white-space:pre-wrap;font-size:12px;background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:10px;margin:8px 0 0;user-select:all}
+.msgdlg details summary{cursor:pointer}
 /* scanned batch */
 .sec.s-scan{--sc:#0e7490}
 @media (prefers-color-scheme:dark){.sec.s-scan{--sc:#38bdf8}}
@@ -96,10 +101,11 @@ body.viewing main{margin-right:min(47vw,760px);margin-left:16px}
 </header>
 <main id="main"><div class="empty">Loading…</div></main>
 <dialog id="dlg"></dialog>
+<dialog id="dlgMsg" class="msgdlg"></dialog>
 <div id="toast" class="toast" role="status"></div>
 
 <script src="shared/dpm-config.js?v=20261122c"></script>
-<script src="shared/dpm-core.js?v=20261122c"></script>
+<script src="shared/dpm-core.js?v=20261122d"></script>
 <script>
 /* =====================================================================
    DPM Document Management Hub  v1.0
@@ -258,7 +264,10 @@ function renderWho(){
   $("#demoRole")?.addEventListener("change", e => { me.role = e.target.value; resolveMe(); renderWho(); if (ed) openBatch(ed.b.id || "new"); else render(); });
   $("#orgname").textContent = BRAND.ORGANISATION;
 }
-$("#nav").addEventListener("click", e => { const b = e.target.closest("button[data-v]"); if (b) go(b.dataset.v); });
+$("#nav").addEventListener("click", async e => { const b = e.target.closest("button[data-v]"); if (!b) return; if (ed?.dirty && !(await leaveUnsaved())) return; if (ed) ed.dirty = false; go(b.dataset.v); });
+const leaveUnsaved = () => ask("This batch has changes that aren't saved yet.", { title:"Unsaved changes", ok:"Leave without saving", cancel:"Stay on the batch", danger:true });
+// Closing or refreshing the tab can only be warned about by the browser itself
+window.addEventListener("beforeunload", e => { if (ed?.dirty){ e.preventDefault(); e.returnValue = ""; } });
 function go(v){ location.hash = v; }
 window.addEventListener("hashchange", route);
 function route(){
@@ -432,15 +441,15 @@ function agencyDialog(a){
   $("#aS").onclick = async () => {
     const f = { Title:$("#aT").value.trim(), AgencyCode:$("#aC").value.trim(), AgencyType:$("#aTy").value, Province:$("#aP").value.trim(), DPMRegion:$("#aR").value.trim(),
       AnnualPEBudget: $("#aB").value === "" ? null : num($("#aB").value), BudgetYear:$("#aY").value.trim(), AgencyActive:$("#aA").value, Aliases:$("#aAl").value, AgencyNotes:$("#aN").value };
-    if (!f.Title) return toast("Agency name is required");
+    if (!f.Title) return tell("Enter the agency name.", { title:"Agency" });
     const clash = S.agencies.find(x => x.id !== a.id && norm(x.Title) === norm(f.Title));
-    if (clash) return toast("There's already an agency with that name");
+    if (clash) return tell(`There's already an agency called "${clash.Title}".`, { title:"Agency" });
     try {
       const saved = DEMO ? { id: a.id || "d" + Date.now(), ...f } : await saveListItem(L.agencies, a.id, f);
       const i = S.agencies.findIndex(x => x.id === a.id);
       if (i >= 0) S.agencies[i] = { ...S.agencies[i], ...f }; else S.agencies.push({ ...saved, ...f });
       d.close(); toast("Agency saved"); render();
-    } catch(e){ toast(isForbidden(e) ? "You don't have permission to change agencies" : "Couldn't save: " + e.message); }
+    } catch(e){ showError("The agency wasn't saved", e, isForbidden(e) ? "You don't have permission to change agencies in SharePoint." : ""); }
   };
 }
 
@@ -476,7 +485,7 @@ function settingDialog(key){
     try {
       if (!DEMO){ if (row.id) await saveListItem(L.settings, row.id, { SettingValue:v }); else S.settingRows.push(await saveListItem(L.settings, null, { Title:key, SettingValue:v })); }
       row.SettingValue = v; S.settings[key] = v; d.close(); toast("Setting saved"); render();
-    } catch(e){ toast(isForbidden(e) ? "Only site Owners can change settings in SharePoint" : "Couldn't save: " + e.message); }
+    } catch(e){ showError("The setting wasn't saved", e, isForbidden(e) ? "Only site Owners can change settings in SharePoint." : ""); }
   };
 }
 
@@ -524,11 +533,11 @@ const SUM = [["TransactionType","Transaction Type","ttype",1],["DPMRegion","DPM 
 
 function openBatch(id){
   if (id === "new"){
-    if (!canEnter()){ toast("Your role can't enter batches"); go("batches"); return; }
+    if (!canEnter()){ tell(`Your role (${me.role}) can't enter batches.`); go("batches"); return; }
     ed = { b:{ BatchStatus:"Draft", ReceivedDate:TODAY, FormType:"Offline Payment (Special Pay)", CaptureMethod:"Manual entry" }, lines:[blankLine()], removed:[], docs:[], isNew:true, auto:new Set(), scan:newScan() };
   } else {
     const b = S.batches.find(x => String(x.id) === String(id));
-    if (!b){ toast("Batch not found"); go("batches"); return; }
+    if (!b){ tell("That batch wasn't found - it may have been removed."); go("batches"); return; }
     ed = { b:{ ...b }, lines: batchLines(b.Title).sort((x, y) => String(x.Title).localeCompare(String(y.Title))).map(l => ({ ...l, MarkedPaid: l.LineStatus === "Held - marked paid" })), removed:[], docs:null, auto:new Set(), scan:newScan() };
     if (!ed.lines.length) ed.lines = [blankLine()];
     loadDocs();
@@ -643,7 +652,7 @@ function refreshChecks(){
   const acc = $("#aAccept"); if (acc) acc.disabled = !!errs.length || own;
 }
 function bindEditor(){
-  $("#back").onclick = () => { if (ed.dirty && !confirm("Leave without saving your changes?")) return; ed = null; go("batches"); route(); };
+  $("#back").onclick = async () => { if (ed.dirty && !(await leaveUnsaved())) return; ed = null; go("batches"); route(); };
   const form = $("#edForm");
   form.addEventListener("input", e => {
     const t = e.target;
@@ -688,7 +697,7 @@ async function nextRef(){
 async function logEvent(ref, type, details = ""){
   const ev = { Title:ref, EventType:type, EventBy:me.name, EventOn:`${TODAY} ${hhmm(new Date())}`, Details:details };
   try { const saved = DEMO ? { id:"e" + Date.now() + Math.random(), ...ev } : await saveListItem(L.events, null, ev); S.events.push({ ...ev, ...saved }); }
-  catch(e){ console.warn("Audit entry not saved", e); toast("Saved, but the history entry couldn't be written: " + e.message); }
+  catch(e){ showError("Saved, but the history entry wasn't written", e, "The batch itself was saved. Only its history line is missing."); }
 }
 
 /* ---------------- save ---------------- */
@@ -744,14 +753,14 @@ async function saveBatch(newStatus, opts = {}){
     if (location.hash !== "#batch/" + encodeURIComponent(b.id)) history.replaceState(null, "", "#batch/" + encodeURIComponent(b.id));
     if (wasNew) loadDocs(); else render();
   } catch(e){
-    toast(isForbidden(e) ? "You don't have permission to save in SharePoint" : "Not saved: " + e.message);
+    showError("The batch wasn't saved", e, isForbidden(e) ? "You don't have permission to save in SharePoint - ask the site owner to add you to the DPM Officers group." : "Nothing was lost - your entries are still on the screen. Fix the problem and press Save again.");
     $$(".actions button").forEach(x => x.disabled = false);
   } finally { saving = false; }
 }
 async function decide(status){
   const b = ed.b;
-  if (norm(b.EnteredBy) === norm(me.name)) return toast("You can't accept a batch you entered");
-  if (!confirm(`Accept ${b.Title}? ${ed.lines.length} line(s), ${kina(sumOf(ed.lines, "Net"))} net. The batch is then locked.`)) return;
+  if (norm(b.EnteredBy) === norm(me.name)) return tell("You entered this batch, so another Checker must accept it.", { title:"Accept batch" });
+  if (!(await ask(`Accept ${b.Title}?\n\n${ed.lines.length} line(s), ${kina(sumOf(ed.lines, "Net"))} net.\nThe batch is then locked.`, { title:"Accept batch", ok:"Accept" }))) return;
   b.AcceptedBy = me.name; b.AcceptedDate = TODAY; b.VerifiedBy = me.name; b.VerifiedDate = TODAY;
   await saveBatch(status, { event:"Accepted", details:`${ed.lines.length} line(s), ${kina(sumOf(ed.lines, "Gross"))} gross, ${kina(sumOf(ed.lines, "Net"))} net` });
 }
@@ -765,7 +774,7 @@ function rejectDialog(){
   d.showModal();
   $("#rjX").onclick = () => d.close();
   $("#rjS").onclick = async () => {
-    const r = $("#rjR").value.trim(); if (!r) return toast("Give at least one reason");
+    const r = $("#rjR").value.trim(); if (!r){ $("#rjR").focus(); return; }
     d.close(); ed.b.RejectionReasons = r; ed.b.AcceptedBy = me.name; ed.b.AcceptedDate = TODAY;
     await saveBatch("Rejected", { event:"Rejected", details:r });
   };
@@ -804,7 +813,7 @@ function docsHtml(){
 }
 function bindDocs(){
   $("#upGo")?.addEventListener("click", async () => {
-    const files = [...($("#upF").files || [])]; if (!files.length) return toast("Choose the scanned file(s) first");
+    const files = [...($("#upF").files || [])]; if (!files.length) return tell("Choose the scanned file(s) first.", { title:"Upload" });
     const type = $("#upT").value, emp = $("#upE").value, ln = ed.lines.find(l => l.EmployeeNo === emp);
     const b = ed.b, folder = `${safeName(b.AgencyName)}/${b.Title}`;
     const meta = { BatchRef:b.Title, AgencyName:b.AgencyName, DocumentType:type, EmployeeNo:emp, EmployeeName:ln?.EmployeeName || "", PayNo:b.PayNo || "", PayDate:b.PayDate || "", TransactionType:b.TransactionType || "", DocStatus:"Received", ReadMethod:"Manual entry", DocAmount: ln ? num(ln.Gross) : null };
@@ -820,7 +829,7 @@ function bindDocs(){
       }
       await logEvent(b.Title, "Document added", `${ok} file(s): ${type}${emp ? " - " + emp : ""}`);
       toast(`${ok} document(s) uploaded`);
-    } catch(e){ toast((ok ? `${ok} uploaded, then: ` : "Upload failed: ") + e.message); }
+    } catch(e){ showError(ok ? `${ok} file(s) uploaded, then it stopped` : "The upload failed", e); }
     loadDocs();
   });
 }
@@ -1070,7 +1079,7 @@ function bindScan(){
     const r = e.target.closest("[data-read]"); if (r){ await readPages([+r.dataset.read]); return; }
     if (e.target.id === "scAll") await readPages(sc.pages.map((p, i) => p.status === "read" ? -1 : i).filter(i => i >= 0));
     if (e.target.id === "scFile") await fileScan();
-    if (e.target.id === "scClear" && confirm("Remove the loaded pages? (Filed documents stay in SharePoint.)")){ ed.scan = newScan(); keepScroll(render); }
+    if (e.target.id === "scClear" && await ask("Remove the loaded pages from this screen?\nDocuments already filed stay in SharePoint.", { title:"Clear the scan", ok:"Remove pages", danger:true })){ ed.scan = newScan(); keepScroll(render); }
   });
   sec.addEventListener("change", async e => {
     const t = e.target;
@@ -1084,35 +1093,36 @@ function bindScan(){
         pages.forEach(p => { p.n = sc.pages.length + 1; sc.pages.push(p); });
         toast(`${pages.length} page(s) loaded`);
         if (sc.view == null && sc.pages.length) sc.view = 0;
-      } catch(err){ toast("Couldn't open the scan: " + err.message); }
+      } catch(err){ showError("Couldn't open the scan", err, "Use a PDF or JPEG/PNG images. Photos from an iPhone may need saving as JPEG first."); }
       sc.busy = false; sc.busyText = ""; keepScroll(render);
     }
   });
 }
 async function readPages(idx){
   const sc = ed.scan; if (!idx.length) return;
-  if (!readOn()) return toast("Read automatically is off - an Admin sets AwsApiUrl and ReadAutomatically in Settings");
-  sc.busy = true; let ok = 0, bad = 0;
+  if (!readOn()) return tell("Read automatically is off. An Admin sets AwsApiUrl and ReadAutomatically in Settings.", { title:"Read automatically" });
+  sc.busy = true; let ok = 0, bad = 0; const failed = [];
   for (const i of idx){
     const p = sc.pages[i]; p.status = "reading"; sc.busyText = `Reading page ${p.n} (${ok + bad + 1} of ${idx.length})…`; keepScroll(render);
     try { const f = await callReader(p); sc.notes.push(...applyRead(p, f)); p.status = "read"; p.note = ""; ok++; ed.dirty = true; }
-    catch(e){ p.status = "error"; p.note = e.message; bad++; toast(`Page ${p.n}: ${e.message}`); }
+    catch(e){ p.status = "error"; p.note = e.message; bad++; failed.push(`Page ${p.n}: ${e.message}`); }
   }
   sc.busy = false; sc.busyText = "";
   if (ok && ed.b.Title) logEvent(ed.b.Title, "Read automatically", `${ok} page(s) read${bad ? `, ${bad} failed` : ""}`);
   keepScroll(render);
-  toast(`${ok} page(s) read${bad ? `, ${bad} couldn't be read` : ""} - check the highlighted values`);
+  if (bad) showError(`${bad} page(s) couldn't be read`, { message: failed.join("\n") }, ok ? `${ok} page(s) were read - check their highlighted values. Press Read automatically on the others to try again.` : "Press Read automatically on a page to try again.");
+  else toast(`${ok} page(s) read - check the highlighted values`);
 }
 // Split the scan into documents: each run of pages with the same type and employee becomes one PDF
 async function fileScan(){
   const sc = ed.scan, b = ed.b;
-  if (!b.Title || ed.dirty) return toast("Save the batch first (Save draft) - documents are filed under its Batch Ref");
+  if (!b.Title || ed.dirty) return tell("Save the batch first (Save draft). Documents are filed under its Batch Ref.", { title:"File documents" });
   const groups = [];
   sc.pages.forEach(p => {
     const type = p.type === "Auto-detect" ? "Other Supporting Document" : p.type, last = groups[groups.length - 1];
     if (last && last.type === type && last.emp === p.emp) last.pages.push(p); else groups.push({ type, emp:p.emp, pages:[p] });
   });
-  if (!confirm(`File ${groups.length} document(s) from ${sc.pages.length} page(s) into ${L.docs}/${safeName(b.AgencyName)}/${b.Title}?${sc.keep ? " The complete scan is kept as well." : ""}`)) return;
+  if (!(await ask(`File ${groups.length} document(s) from ${sc.pages.length} page(s) into\n${L.docs}/${safeName(b.AgencyName)}/${b.Title}?${sc.keep ? "\n\nThe complete scan is kept as well." : ""}`, { title:"File documents", ok:"File documents" }))) return;
   sc.busy = true; let done = 0;
   try {
     const PL = await loadPdfLib();
@@ -1157,7 +1167,7 @@ async function fileScan(){
     await logEvent(b.Title, "Document added", `${done} document(s) filed from ${sc.pages.length} scanned page(s)${sc.keep ? ", plus the complete scan" : ""}`);
     toast(`${done} document(s) filed`);
     ed.scan = newScan();
-  } catch(e){ toast((done ? `${done} filed, then: ` : "Filing failed: ") + e.message); }
+  } catch(e){ showError(done ? `${done} document(s) filed, then it stopped` : "The documents weren't filed", e, "The loaded pages are still here - press File documents again to retry."); }
   sc.busy = false; sc.busyText = "";
   loadDocs();
 }
