@@ -56,6 +56,29 @@ header .rolesel{background:#1d3550;color:#fff;border:1px solid rgba(255,255,255,
 .readonly input,.readonly select,.readonly textarea{pointer-events:none;background:var(--grey-bg)!important}
 .kpi.k-b{--kc:#1d4e89}.kpi.k-p{--kc:#b45309}.kpi.k-a{--kc:#15803d}.kpi.k-r{--kc:#b91c1c}.kpi.k-h{--kc:#7c3aed}.kpi.k-g{--kc:#0f8a80}.kpi.k-s{--kc:#c8962e}
 .kpi .v.sm{font-size:22px}
+/* two ways in: manual batch / scanned batch */
+header nav .navsep{width:1px;align-self:stretch;background:rgba(255,255,255,.25);margin:6px 6px}
+body.scanmode main{max-width:none}
+.startscan{max-width:760px;margin:10px auto 30px;padding:26px 30px}
+.startscan h2{margin:0 0 8px;font-size:22px}
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:2px dashed var(--accent);border-radius:14px;padding:44px 20px;margin:18px 0;cursor:pointer;background:var(--surface2);text-align:center}
+.drop:hover,.drop.over{background:#fff4cc}
+@media (prefers-color-scheme:dark){.drop:hover,.drop.over{background:#3d3210}}
+.drop .big{font-size:18px;font-weight:700}
+.startscan ol.next{margin:6px 0 14px;padding-left:20px;line-height:1.7}
+.scantop{margin-bottom:12px}
+.strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px}
+.strip .pg{flex:0 0 158px}
+.strip .pg img{height:120px}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,44%);gap:16px;align-items:stretch}
+.split .left{min-width:0}
+.viewpane{position:sticky;top:84px;height:calc(100vh - 100px);display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
+.viewpane .vh{display:flex;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px;flex-wrap:wrap}
+.viewpane .vh .grow{flex:1}
+.viewpane .vb{flex:1;overflow:auto;background:#525659;display:flex;justify-content:center;align-items:flex-start;padding:12px}
+.viewpane img{max-width:100%;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.45)}
+.viewpane.zoom img{max-width:none;width:190%}
+@media (max-width:1000px){.split{grid-template-columns:1fr}.viewpane{position:relative;top:0;height:60vh}}
 /* the Hub's own message dialog */
 .msgdlg{width:min(520px,92vw)}
 .msgdlg .msg{white-space:pre-wrap;margin:0 0 10px;line-height:1.5}
@@ -77,14 +100,6 @@ input.auto,select.auto{background:#fff4cc!important;border-color:#d4a017!importa
 @media (prefers-color-scheme:dark){input.auto,select.auto{background:#3d3210!important}}
 .readnotes{background:var(--warn-bg);border-radius:8px;padding:8px 14px;margin:0 0 12px;font-size:13px}
 .readnotes ul{margin:4px 0 0;padding-left:18px}
-body.viewing main{margin-right:min(47vw,760px);margin-left:16px}
-.viewer{position:fixed;right:0;bottom:0;width:min(47vw,760px);background:var(--surface);border-left:1px solid var(--line);box-shadow:-8px 0 24px rgba(16,24,40,.14);z-index:30;display:flex;flex-direction:column}
-.viewer .vh{display:flex;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px;flex-wrap:wrap}
-.viewer .vh .grow{flex:1}
-.viewer .vb{flex:1;overflow:auto;background:#525659;display:flex;justify-content:center;align-items:flex-start;padding:14px}
-.viewer img{max-width:100%;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.45)}
-.viewer.zoom img{max-width:none;width:190%}
-@media (max-width:900px){body.viewing main{margin-right:0}.viewer{width:100%;height:55vh;top:auto!important}}
 </style>
 </head>
 <body>
@@ -96,6 +111,9 @@ body.viewing main{margin-right:min(47vw,760px);margin-left:16px}
     <button data-v="register">Register</button>
     <button data-v="ref">Agencies &amp; codes</button>
     <button data-v="settings">Settings</button>
+    <span class="navsep" data-new></span>
+    <button data-v="batch/new" data-new title="Type a batch in from the paper forms">+ Manual batch</button>
+    <button data-v="scan/new" data-new title="Load a scanned batch and enter it beside the pages">+ Scanned batch</button>
   </nav>
   <div class="who" id="who"></div>
 </header>
@@ -272,15 +290,17 @@ function go(v){ location.hash = v; }
 window.addEventListener("hashchange", route);
 function route(){
   const h = location.hash.slice(1) || "dash";
+  if (h === "scan/new"){ openBatch("new", "scan"); return; }
   if (h.startsWith("batch/")){ const id = decodeURIComponent(h.slice(6)); openBatch(id); return; }
   view = ["dash","batches","register","ref","settings"].includes(h) ? h : "dash"; ed = null; render();
 }
 function render(){
-  $$("#nav button").forEach(b => b.classList.toggle("on", b.dataset.v === view && !ed));
+  $$("#nav button").forEach(b => b.classList.toggle("on", ed ? (ed.isNew && b.dataset.v === (ed.mode === "scan" ? "scan/new" : "batch/new")) : b.dataset.v === view));
+  $$("#nav [data-new]").forEach(x => x.hidden = !canEnter());
   const banner = (DEMO ? `<div class="banner">Demo mode - made-up agencies' batches and people, kept in this browser only until you refresh. Put the Entra app's client ID in shared/dpm-config.js to connect to SharePoint. Use the role list at the top right to try each role.</div>` : "")
     + (me.note ? `<div class="banner">${esc(me.note)}</div>` : "");
   if (ed) return renderEditor(banner);
-  document.body.classList.remove("viewing");
+  document.body.classList.remove("scanmode");
   $("#main").innerHTML = banner + ({ dash:viewDash, batches:viewBatches, register:viewRegister, ref:viewRef, settings:viewSettings }[view])();
   bindView();
 }
@@ -359,7 +379,7 @@ function viewBatches(){
   return `<div class="bar"><h2>Batches</h2><span class="grow"></span>
       <input type="search" id="bQ" placeholder="Search ref, agency, pay no…" value="${esc(f.q)}">
       <select class="f" id="bWeek"><option value="">All weeks</option>${weeks().map(w => opt(w, f.week, "Week ending " + fmtDate(w))).join("")}</select>
-      ${canEnter() ? `<button class="btn primary" id="newB">+ New batch</button>` : ""}</div>
+      ${canEnter() ? `<button class="btn" id="newB">+ Manual batch</button><button class="btn primary" id="newS">+ Scanned batch</button>` : ""}</div>
     <div class="bar chips">${chips}</div>
     <div class="tablewrap"><table><thead><tr><th>Batch Ref</th><th>Agency</th><th>Pay No</th><th>Pay Date</th><th>Transaction</th><th>Lines</th><th>Gross</th><th>Net</th><th>Status</th><th>Received</th><th>Entered by</th></tr></thead>
     <tbody>${rows.map(b => { const ls = batchLines(b.Title); return `<tr data-open="${esc(b.id)}"><td class="mono"><b>${esc(b.Title)}</b>${isMigrated(b) ? ` <span class="pill p-grey" title="${esc(b.SourceSheet || "")}">old register</span>` : ""}</td><td>${esc(b.AgencyName)}</td><td class="mono">${esc(b.PayNo)}</td><td class="mono">${fmtDate(b.PayDate)}</td><td>${esc(b.TransactionType)}</td><td class="mono">${ls.length}</td><td class="mono">${kina(sumOf(ls, "Gross"))}</td><td class="mono">${kina(sumOf(ls, "Net"))}</td><td>${pill(b.BatchStatus)}</td><td class="mono">${fmtDate(b.ReceivedDate)}</td><td>${esc(b.EnteredBy)}</td></tr>`; }).join("") || `<tr><td colspan="11" class="empty">No batches match.</td></tr>`}</tbody></table></div>
@@ -502,6 +522,7 @@ function bindView(){
     const ag = t.closest("[data-ag]"); if (ag && canEnter()){ agencyDialog(S.agencies.find(x => String(x.id) === ag.dataset.ag)); return; }
     const st = t.closest("[data-set]"); if (st && isAdmin()){ settingDialog(st.dataset.set); return; }
     if (t.id === "newB") return go("batch/new");
+    if (t.id === "newS") return go("scan/new");
     if (t.id === "newAg") return agencyDialog();
     if (t.id === "rCsv") return csv(`${BRAND.SHORT}-register-${TODAY}.csv`, registerRows(), REG_COLS);
   };
@@ -531,14 +552,14 @@ const SUM = [["TransactionType","Transaction Type","ttype",1],["DPMRegion","DPM 
   ["SummaryValidatedBy","Validated By"],["SummaryValidatedDate","Validated Date","date"],["SummaryCertifiedBy","Certified By"],["SummaryCertifiedDate","Certified Date","date"],
   ["TotalGross","Total Gross on summary (K)","money"],["TotalTax","Total Tax on summary (K)","money"],["TotalNet","Total Net on summary (K)","money"],["AgencyClaimedGross","Agency Claimed Gross (K) - if shown","money"]];
 
-function openBatch(id){
+function openBatch(id, mode = "manual"){
   if (id === "new"){
     if (!canEnter()){ tell(`Your role (${me.role}) can't enter batches.`); go("batches"); return; }
-    ed = { b:{ BatchStatus:"Draft", ReceivedDate:TODAY, FormType:"Offline Payment (Special Pay)", CaptureMethod:"Manual entry" }, lines:[blankLine()], removed:[], docs:[], isNew:true, auto:new Set(), scan:newScan() };
+    ed = { b:{ BatchStatus:"Draft", ReceivedDate:TODAY, FormType:"Offline Payment (Special Pay)", CaptureMethod:"Manual entry" }, lines:[blankLine()], removed:[], docs:[], isNew:true, auto:new Set(), scan:newScan(), mode };
   } else {
     const b = S.batches.find(x => String(x.id) === String(id));
     if (!b){ tell("That batch wasn't found - it may have been removed."); go("batches"); return; }
-    ed = { b:{ ...b }, lines: batchLines(b.Title).sort((x, y) => String(x.Title).localeCompare(String(y.Title))).map(l => ({ ...l, MarkedPaid: l.LineStatus === "Held - marked paid" })), removed:[], docs:null, auto:new Set(), scan:newScan() };
+    ed = { b:{ ...b }, lines: batchLines(b.Title).sort((x, y) => String(x.Title).localeCompare(String(y.Title))).map(l => ({ ...l, MarkedPaid: l.LineStatus === "Held - marked paid" })), removed:[], docs:null, auto:new Set(), scan:newScan(), mode:"manual" };
     if (!ed.lines.length) ed.lines = [blankLine()];
     loadDocs();
   }
@@ -582,12 +603,14 @@ function renderEditor(banner){
   const errs = checks.filter(c => c.sev === "e"), badLines = new Set(errs.filter(c => c.line != null).map(c => c.line));
   const events = b.Title ? S.events.filter(e => e.Title === b.Title).sort((x, y) => String(y.EventOn).localeCompare(String(x.EventOn))) : [];
   const ownEntry = norm(b.EnteredBy) && norm(b.EnteredBy) === norm(me.name);
-  $("#main").innerHTML = banner + `
-    <div class="edhead"><button class="btn" id="back">← Batches</button><h2>${esc(b.Title || "New batch")}</h2>${pill(b.BatchStatus || "Draft")}
+  const scanMode = ed.mode === "scan";
+  document.body.classList.toggle("scanmode", scanMode);
+  const head = `
+    <div class="edhead"><button class="btn" id="back">← Batches</button><h2>${esc(b.Title || (scanMode ? "New scanned batch" : "New batch"))}</h2>${pill(b.BatchStatus || "Draft")}
       <span class="sub">${b.AgencyName ? esc(b.AgencyName) : ""}${b.PayNo ? " · Pay " + esc(b.PayNo) : ""}${b.ResubmissionOf ? " · resubmission of " + esc(b.ResubmissionOf) : ""}</span></div>
     ${b.BatchStatus === "Rejected" || b.BatchStatus === "Returned to agency" ? `<div class="banner err"><b>Rejected</b>${b.AcceptedBy ? " by " + esc(b.AcceptedBy) + " on " + fmtDate(b.AcceptedDate) : ""}${b.ReturnedDate ? " · returned to agency " + fmtDate(b.ReturnedDate) : ""}<div style="white-space:pre-wrap;margin-top:6px">${esc(b.RejectionReasons)}</div></div>` : ""}
-    ${isMigrated(b) ? `<div class="banner"><b>From the old register</b> (${esc(b.SourceSheet || "")}) - imported as it was typed, not checked against the paper documents.<div style="white-space:pre-wrap;margin-top:6px">${esc(b.BatchNotes || "")}</div></div>` : ""}
-    <div id="edForm" class="${can ? "" : "readonly"}">
+    ${isMigrated(b) ? `<div class="banner"><b>From the old register</b> (${esc(b.SourceSheet || "")}) - imported as it was typed, not checked against the paper documents.<div style="white-space:pre-wrap;margin-top:6px">${esc(b.BatchNotes || "")}</div></div>` : ""}`;
+  const form = `    <div id="edForm" class="${can ? "" : "readonly"}">
     <div class="sec s-ctl"><h3>1 · Batch Control Form</h3><div class="fg">${CTL.map(field).join("")}</div></div>
     <div class="sec s-sum"><h3>2 · DPM Validated Summary</h3><div class="fg">${SUM.map(field).join("")}
       <label class="fld w3"><span>Notes</span><textarea data-f="BatchNotes">${esc(b.BatchNotes)}</textarea></label></div></div>
@@ -598,16 +621,21 @@ function renderEditor(banner){
       ${can ? `<div style="margin-top:10px"><button class="btn" id="addLn">+ Add line</button> <span class="note">Tick <b>Pink ✓</b> when the employee's Special Offline Payment Form is in the batch and matches. Tick <b>Paid?</b> if someone has written "Paid" on it.</span></div>` : ""}</div>
     </div>
     <div class="sec s-chk" id="chkSec">${isMigrated(b) ? migratedFlagsHtml() : checksHtml(checks)}</div>
-    ${scanHtml()}
-    <div class="sec s-docs"><h3>5 · Filed documents</h3><div id="docBox">${docsHtml()}</div></div>
+    <div class="sec s-docs"><h3>4 · ${scanMode ? "Filed documents" : "Documents"}</h3><div id="docBox">${docsHtml()}</div>
+      ${!scanMode && canEnter() && !["Accepted","Superseded"].includes(b.BatchStatus) ? `<p class="note" style="margin-top:12px">Have the scanned batch? <button class="btn sm" id="toScan">Open the scan beside this form</button></p>` : ""}</div>
     ${events.length ? `<div class="sec s-hist"><h3>History</h3><ul class="list hist">${events.map(e => `<li><span class="id mono">${esc(String(e.EventOn || "").replace("T", " "))}</span><span class="x"><b>${esc(e.EventType)}</b> - ${esc(e.EventBy)}${e.Details ? `<div class="note" style="white-space:pre-wrap">${esc(e.Details)}</div>` : ""}</span></li>`).join("")}</ul></div>` : ""}
-    <div class="actions"><span class="note" id="actNote">${actionNote(errs.length, ownEntry)}</span><span class="grow"></span>${actionButtons(errs.length, ownEntry)}</div>
-    ${viewerHtml()}
-    <datalist id="dlAg">${S.agencies.filter(a => a.AgencyActive !== "No").map(a => `<option value="${esc(a.Title)}">`).join("")}</datalist>
+    <div class="actions"><span class="note" id="actNote">${actionNote(errs.length, ownEntry)}</span><span class="grow"></span>${actionButtons(errs.length, ownEntry)}</div>`;
+  const lists = `<datalist id="dlAg">${S.agencies.filter(a => a.AgencyActive !== "No").map(a => `<option value="${esc(a.Title)}">`).join("")}</datalist>
     <datalist id="dlRegions">${lines(setting("DPMRegions")).map(r => `<option value="${esc(r)}">`).join("")}</datalist>
     <datalist id="dlPay">${S.paycodes.map(p => `<option value="${esc(p.Title)}">${esc(p.CodeDescription || "")}</option>`).join("")}</datalist>`;
+  if (scanMode && !ed.scan.pages.length){ $("#main").innerHTML = banner + head + scanStartHtml() + lists; bindScanStart(); return; }
+  $("#main").innerHTML = banner + head + (scanMode ? `${scanTopHtml()}<div class="split"><div class="left">${form}</div><div class="right">${viewPaneHtml()}</div></div>` : form) + lists;
   if (!can) $$("#edForm input, #edForm select, #edForm textarea").forEach(x => x.disabled = true);
   bindEditor();
+}
+function bindScanStart(){
+  $("#back").onclick = async () => { if (ed.dirty && !(await leaveUnsaved())) return; ed = null; go("batches"); route(); };
+  bindScan();
 }
 // Migrated batches: the old register has no Batch Control Form or summary, so the entry checks don't apply.
 // Show what the migration flagged on each line instead.
@@ -679,6 +707,7 @@ function bindEditor(){
   $("#aReturn")?.addEventListener("click", async () => { ed.b.ReturnedDate = TODAY; await saveBatch("Returned to agency", { event:"Returned to agency" }); });
   $("#aResub")?.addEventListener("click", startResubmission);
   bindDocs(); bindScan();
+  $("#toScan")?.addEventListener("click", () => { ed.mode = "scan"; render(); scrollTo(0, 0); });
 }
 
 /* ---------------- numbering ---------------- */
@@ -1022,57 +1051,86 @@ function applyRead(pg, f){
 }
 
 /* ---------------- panel ---------------- */
-function scanHtml(){
+// Scanned-batch mode, step 1: nothing but the file to load
+function scanStartHtml(){
+  const on = readOn();
+  return `<div class="card startscan" id="scanSec">
+    <h2>Step 1 · Load the scanned batch</h2>
+    <p>Scan the whole batch - the Batch Control Form, the DPM Validated Summary, every pink form and any calculation sheets - into <b>one PDF</b>, using the scanner's own software or the Windows Scan app. Phone photos (JPEG or PNG) work too.</p>
+    <label class="drop" id="dropZone"><input type="file" id="scF" multiple accept=".pdf,application/pdf,image/*" hidden>
+      <span class="big">Drop the scanned PDF here</span><span class="note">or click to choose the file</span></label>
+    ${ed.scan.busyText ? `<p class="note"><b>${esc(ed.scan.busyText)}</b></p>` : ""}
+    <ol class="next">
+      <li>The pages appear on the right, the form on the left.</li>
+      <li>${on ? "<b>Read all pages</b> fills the form from the scan. Every filled value is highlighted." : "Type each value from the page into the form. (Read automatically is off.)"}</li>
+      <li>Check each highlighted value against the page, then <b>Save draft</b>.</li>
+      <li><b>File documents</b> saves each document to SharePoint with its details.</li>
+    </ol>
+    <p class="note">No scan to hand? <a href="#batch/new">Enter a batch manually</a> instead.</p>
+  </div>`;
+}
+// Scanned-batch mode, step 2: toolbar and page strip across the top
+function scanTopHtml(){
   const sc = ed.scan, can = canEnter() && !["Accepted","Superseded"].includes(ed.b.BatchStatus);
-  if (!can && !sc.pages.length) return "";
   const on = readOn(), pages = sc.pages, read = pages.filter(p => p.status === "read").length;
   const empOpts = cur => `<option value="">Employee…</option>${ed.lines.filter(l => l.EmployeeNo).map(l => opt(l.EmployeeNo, cur, `${l.EmployeeNo} ${l.EmployeeName || ""}`)).join("")}`;
   const st = p => p.status === "reading" ? `<span class="pill p-info">Reading…</span>` : p.status === "read" ? `<span class="pill p-ok">Read ✓</span>` : p.status === "error" ? `<span class="pill p-crit" title="${esc(p.note)}">Error</span>` : "";
-  return `<div class="sec s-scan" id="scanSec"><h3>4 · Scanned batch</h3>
-    <div class="scanbar">
-      ${can ? `<label class="btn ${pages.length ? "" : "primary"}"><input type="file" id="scF" multiple accept=".pdf,application/pdf,image/*" hidden>${pages.length ? "+ Add more pages" : "Load scanned batch (PDF or images)"}</label>` : ""}
-      ${pages.length && can ? `<button class="btn primary" id="scAll" ${on && !sc.busy ? "" : "disabled"}>Read all pages${read ? ` (${pages.length - read} left)` : ""}</button>
-        <button class="btn" id="scFile" ${sc.busy ? "disabled" : ""}>File documents</button>
-        <label class="note"><input type="checkbox" id="scKeep" ${sc.keep ? "checked" : ""}> also keep the complete scan</label>
+  return `<div class="sec s-scan scantop" id="scanSec">
+    <div class="scanbar"><b>Scanned batch · ${pages.length} page${pages.length === 1 ? "" : "s"}</b>
+      ${can ? `<button class="btn primary" id="scAll" ${on && !sc.busy && read < pages.length ? "" : "disabled"} title="${on ? "" : "Read automatically is off - Settings: AwsApiUrl, ReadAutomatically"}">${read ? (read < pages.length ? `Read the other ${pages.length - read} page(s)` : "All pages read ✓") : "Read all pages"}</button>
+        <label class="btn"><input type="file" id="scF" multiple accept=".pdf,application/pdf,image/*" hidden>+ Add pages</label>
+        <button class="btn" id="scFile" ${sc.busy ? "disabled" : ""} title="Save the batch first">File documents</button>
+        <label class="note"><input type="checkbox" id="scKeep" ${sc.keep ? "checked" : ""}> keep the complete scan too</label>
         <button class="btn" id="scClear" ${sc.busy ? "disabled" : ""}>Clear</button>` : ""}
-      <span class="grow"></span>
-      <span class="note">${on ? `Read automatically: <b>${esc(setting("ReadAutomatically"))}</b>` : "Read automatically is off (Settings: AwsApiUrl, ReadAutomatically)"}</span>
-    </div>
+      <span class="grow"></span><span class="note">${on ? `Read automatically: <b>${esc(setting("ReadAutomatically"))}</b>` : "Read automatically is off"}</span></div>
     ${sc.busyText ? `<p class="note"><b>${esc(sc.busyText)}</b></p>` : ""}
     ${sc.notes.length ? `<div class="readnotes"><b>Check these against the scan:</b><ul>${sc.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}
-    ${pages.length ? `<div class="pages">${pages.map((p, i) => `<div class="pg ${sc.view === i ? "on" : ""}">
-        <img src="${p.thumb}" data-view="${i}" alt="Page ${p.n}" style="transform:rotate(${p.rot}deg)">
+    <div class="strip">${pages.map((p, i) => `<div class="pg ${sc.view === i ? "on" : ""}">
+        <img src="${p.thumb}" data-view="${i}" alt="Page ${p.n}" style="transform:rotate(${p.rot}deg)" title="Show this page">
         <div class="pgn"><span>Page ${p.n}</span>${st(p)}</div>
-        <select data-pgt="${i}" ${can ? "" : "disabled"}>${READ_TYPES.map(t => opt(t, p.type)).join("")}</select>
-        <select data-pge="${i}" ${can ? "" : "disabled"}>${empOpts(p.emp)}</select>
-        ${can ? `<button class="btn sm" data-read="${i}" ${on && !sc.busy ? "" : "disabled"}>${p.status === "read" ? "Read again" : "Read automatically"}</button>` : ""}
+        <select data-pgt="${i}" ${can ? "" : "disabled"} title="Document type">${READ_TYPES.map(t => opt(t, p.type)).join("")}</select>
+        <select data-pge="${i}" ${can ? "" : "disabled"} title="Employee this page belongs to">${empOpts(p.emp)}</select>
+        ${can ? `<button class="btn sm" data-read="${i}" ${on && !sc.busy ? "" : "disabled"}>${p.status === "read" ? "Read again" : "Read this page"}</button>` : ""}
       </div>`).join("")}</div>
-      <p class="note">Click a page to open it beside the form. Values filled from a scan are <span style="background:#fff4cc;padding:0 4px;border-radius:3px">highlighted</span> until someone checks them. <b>File documents</b> saves each run of pages with the same type and employee as one PDF in ${esc(L.docs)}.</p>`
-    : `<p class="note">Scan the whole batch with the scanner's own software (or the Windows Scan app) to a PDF, then load it here. Phone photos work too. Each page is shown beside the form${on ? " and can be read automatically" : ""}.</p>`}
   </div>`;
 }
-function viewerHtml(){
-  const sc = ed.scan, p = sc.view != null ? sc.pages[sc.view] : null;
-  document.body.classList.toggle("viewing", !!p);
-  if (!p) return "";
-  const top = ($("header")?.offsetHeight || 64);
-  return `<div class="viewer ${sc.zoom ? "zoom" : ""}" style="top:${top}px">
+// Scanned-batch mode: the page beside the form (stays in view while the form scrolls)
+function viewPaneHtml(){
+  const sc = ed.scan; if (sc.view == null || sc.view >= sc.pages.length) sc.view = 0;
+  const p = sc.pages[sc.view];
+  return `<div class="viewpane ${sc.zoom ? "zoom" : ""}">
     <div class="vh"><b>Page ${p.n} of ${sc.pages.length}</b><span class="note">${esc(p.type)}${p.emp ? " · " + esc(p.emp) : ""}</span><span class="grow"></span>
       <button class="btn sm" data-vp="-1" ${sc.view === 0 ? "disabled" : ""}>‹ Prev</button><button class="btn sm" data-vp="1" ${sc.view === sc.pages.length - 1 ? "disabled" : ""}>Next ›</button>
-      <button class="btn sm" data-vrot="1" title="Rotate">⟳</button><button class="btn sm" data-vzoom="1">${sc.zoom ? "Fit" : "Zoom"}</button><button class="btn sm" data-vx="1" title="Close">✕</button></div>
+      <button class="btn sm" data-vrot="1" title="Rotate">⟳</button><button class="btn sm" data-vzoom="1">${sc.zoom ? "Fit" : "Zoom"}</button></div>
     <div class="vb"><img src="${p.jpg}" alt="Page ${p.n}" style="transform:rotate(${p.rot}deg)${p.rot % 180 ? ";margin:15% 0" : ""}"></div></div>`;
 }
 function keepScroll(fn){ const y = scrollY; fn(); scrollTo(0, y); }
+async function loadScanFiles(files){
+  const sc = ed.scan; if (!files.length || sc.busy) return;
+  sc.busy = true; sc.busyText = "Opening the scan…"; keepScroll(render);
+  try {
+    const pages = await pagesFromFiles(files, n => { sc.busyText = `Opening the scan… ${n} page(s)`; const b = $("#scanSec .note b"); if (b) b.textContent = sc.busyText; });
+    pages.forEach(p => { p.n = sc.pages.length + 1; sc.pages.push(p); });
+    if (sc.view == null) sc.view = 0;
+    toast(`${pages.length} page(s) loaded`);
+  } catch(err){ showError("Couldn't open the scan", err, "Use a PDF or JPEG/PNG images. Photos from an iPhone may need saving as JPEG first."); }
+  sc.busy = false; sc.busyText = ""; keepScroll(render);
+}
 function bindScan(){
   const sec = $("#scanSec"), sc = ed.scan;
-  $(".viewer")?.addEventListener("click", e => {
+  $(".viewpane")?.addEventListener("click", e => {
     const t = e.target.closest("button"); if (!t) return;
-    if (t.dataset.vp){ sc.view = Math.max(0, Math.min(sc.pages.length - 1, sc.view + +t.dataset.vp)); }
+    if (t.dataset.vp) sc.view = Math.max(0, Math.min(sc.pages.length - 1, sc.view + +t.dataset.vp));
     if (t.dataset.vrot) sc.pages[sc.view].rot = (sc.pages[sc.view].rot + 90) % 360;
     if (t.dataset.vzoom) sc.zoom = !sc.zoom;
-    if (t.dataset.vx) sc.view = null;
     keepScroll(render);
   });
+  const dz = $("#dropZone");
+  if (dz){
+    ["dragenter","dragover"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("over"); }));
+    ["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("over"); }));
+    dz.addEventListener("drop", e => loadScanFiles([...(e.dataTransfer?.files || [])]));
+  }
   if (!sec) return;
   sec.addEventListener("click", async e => {
     const v = e.target.closest("[data-view]"); if (v){ sc.view = +v.dataset.view; keepScroll(render); return; }
@@ -1086,16 +1144,7 @@ function bindScan(){
     if (t.dataset.pgt) sc.pages[+t.dataset.pgt].type = t.value;
     if (t.dataset.pge) sc.pages[+t.dataset.pge].emp = t.value;
     if (t.id === "scKeep") sc.keep = t.checked;
-    if (t.id === "scF" && t.files.length){
-      const files = [...t.files]; sc.busy = true; sc.busyText = "Opening the scan…"; keepScroll(render);
-      try {
-        const pages = await pagesFromFiles(files, n => { sc.busyText = `Opening the scan… ${n} page(s)`; const b = $("#scanSec .note b"); if (b) b.textContent = sc.busyText; });
-        pages.forEach(p => { p.n = sc.pages.length + 1; sc.pages.push(p); });
-        toast(`${pages.length} page(s) loaded`);
-        if (sc.view == null && sc.pages.length) sc.view = 0;
-      } catch(err){ showError("Couldn't open the scan", err, "Use a PDF or JPEG/PNG images. Photos from an iPhone may need saving as JPEG first."); }
-      sc.busy = false; sc.busyText = ""; keepScroll(render);
-    }
+    if (t.id === "scF" && t.files.length) await loadScanFiles([...t.files]);
   });
 }
 async function readPages(idx){
@@ -1166,7 +1215,7 @@ async function fileScan(){
     }
     await logEvent(b.Title, "Document added", `${done} document(s) filed from ${sc.pages.length} scanned page(s)${sc.keep ? ", plus the complete scan" : ""}`);
     toast(`${done} document(s) filed`);
-    ed.scan = newScan();
+    ed.scan = newScan(); ed.mode = "manual";
   } catch(e){ showError(done ? `${done} document(s) filed, then it stopped` : "The documents weren't filed", e, "The loaded pages are still here - press File documents again to retry."); }
   sc.busy = false; sc.busyText = "";
   loadDocs();
