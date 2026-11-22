@@ -21,6 +21,9 @@ It replaces the weekly "Master Register - Overspending Agencies" spreadsheet: of
 | `shared/dpm-config.js` | Tenant, site and list prefix. The **only** file to change when moving tenants |
 | `shared/dpm-core.js` | Sign-in, Graph calls, document upload, date helpers (same patterns as the MJE Hubs) |
 | `shared/dpm.css` | Look and feel |
+| `shared/dpm-crest.png`, `dpm-icon*.png` | PNG national crest - logo and tab icon |
+| `aws/dpm-reader.yaml` | CloudFormation template for the "Read automatically" service (Claude on Amazon Bedrock, Australia) |
+| `aws/README-AWS.md` | Step-by-step AWS console setup for that service |
 
 ## Checks on every batch
 
@@ -37,6 +40,17 @@ One error anywhere rejects the whole batch.
 - Warning when an employee number has a different name elsewhere in the register.
 
 A Checker can't accept a batch they entered themselves. Every action (created, submitted, accepted, rejected with reasons, returned, resubmitted, document added) is written to `DPM_BatchEvents`.
+
+## Scanning and reading
+
+A web page can't drive a scanner. Scan the whole batch to a PDF with the scanner's own software or the Windows Scan app (phone photos also work), then load it in section **4 · Scanned batch** of the batch page.
+
+- **Viewing:** every page is shown as a thumbnail and opens beside the form (with rotate and zoom).
+- **Read automatically** (once the AWS service is set up and the `ReadAutomatically` setting isn't `Off`):
+  - Each page is identified and read, and the values fill empty fields. They stay highlighted until a person checks them.
+  - Differences between documents are listed. Examples: a pink form that doesn't match its summary line, a handwritten "Paid", unreadable boxes, invalid dates.
+  - A value already on the form is never overwritten; the difference is listed instead.
+- **File documents:** each run of pages with the same document type and employee is saved as one PDF in `DPM_BatchDocuments/<Agency>/<Batch Ref>/`, with its details. The complete scan can be kept as well.
 
 ## Connecting to SharePoint
 

@@ -49,6 +49,11 @@ async function token(){
   try { return (await msalApp.acquireTokenSilent({ scopes:CONFIG.SCOPES, account })).accessToken; }
   catch(e){ await msalApp.acquireTokenRedirect({ scopes:CONFIG.SCOPES, account }); }
 }
+// ID token for the Hub's own app registration - the AWS reading service checks it (issuer = this tenant, audience = CLIENT_ID)
+async function idToken(){
+  try { return (await msalApp.acquireTokenSilent({ scopes:["openid","profile"], account })).idToken; }
+  catch(e){ await msalApp.acquireTokenRedirect({ scopes:["openid","profile"], account }); }
+}
 const signIn  = () => msalApp.loginRedirect({ scopes:CONFIG.SCOPES });
 const signOut = () => msalApp.logoutRedirect({ account });
 
