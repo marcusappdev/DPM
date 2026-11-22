@@ -28,8 +28,8 @@ const fmtDate = s => { if (!s) return ""; const [y,m,d] = String(s).slice(0,10).
 const isRealDate = s => { if (!/^\d{4}-\d{2}-\d{2}$/.test(s || "")) return false; const [y,m,d] = s.split("-").map(Number); const t = new Date(y, m-1, d); return t.getFullYear() === y && t.getMonth() === m-1 && t.getDate() === d; };
 const num = v => (v === "" || v == null || isNaN(+v)) ? 0 : +v;
 const r2 = v => Math.round(num(v) * 100) / 100;
-const kina = v => "K" + num(v).toLocaleString("en-AU", { minimumFractionDigits:2, maximumFractionDigits:2 });
-const kinaShort = v => { const n = num(v); return n >= 1e6 ? "K" + (n/1e6).toFixed(2) + "M" : n >= 1e4 ? "K" + Math.round(n/1e3) + "k" : kina(n); };
+const kina = v => (num(v) < 0 ? "-K" : "K") + Math.abs(num(v)).toLocaleString("en-AU", { minimumFractionDigits:2, maximumFractionDigits:2 });
+const kinaShort = v => { const n = num(v), a = Math.abs(n), sg = n < 0 ? "-" : ""; return a >= 1e6 ? sg + "K" + (a/1e6).toFixed(2) + "M" : a >= 1e4 ? sg + "K" + Math.round(a/1e3) + "k" : kina(n); };
 const norm = s => String(s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 /* ---------------- the Hub's own dialogs (instead of the browser's "…github.io says" boxes) ----------------
    ask()       -> Promise<boolean>  question with two buttons
