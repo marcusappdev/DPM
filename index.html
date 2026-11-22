@@ -250,6 +250,8 @@ function render(){
 }
 
 /* ---------------- shared bits ---------------- */
+const MIGRATED = "Migrated from spreadsheet";
+const isMigrated = b => b && b.CaptureMethod === MIGRATED;
 const pill = (s, map = STATUS_PILL) => s ? `<span class="pill ${map[s] || "p-grey"}">${esc(s)}</span>` : "";
 const batchLines = ref => S.lines.filter(l => l.BatchRef === ref);
 const sumOf = (arr, k) => r2(arr.reduce((a, x) => a + num(x[k]), 0));
@@ -266,7 +268,8 @@ function csv(name, rows, cols){
    ===================================================================== */
 function viewDash(){
   const wk = F.d.week, ag = F.d.agency;
-  const bs = S.batches.filter(b => (!wk || b.WeekEnding === wk) && (!ag || b.AgencyName === ag));
+  const bs = S.batches.filter(b => b.BatchStatus !== "Superseded" && (!wk || b.WeekEnding === wk) && (!ag || b.AgencyName === ag));
+  const migrated = bs.filter(isMigrated).length;
   const refs = new Set(bs.map(b => b.Title));
   const ls = S.lines.filter(l => refs.has(l.BatchRef));
   const acc = bs.filter(b => b.BatchStatus === "Accepted"), accRefs = new Set(acc.map(b => b.Title));
@@ -275,6 +278,7 @@ function viewDash(){
   const pend = bs.filter(b => b.BatchStatus === "Submitted for check");
   const drafts = bs.filter(b => b.BatchStatus === "Draft");
   const held = ls.filter(l => l.LineStatus === "Held - marked paid");
+  const query = ls.filter(l => l.LineStatus === "Query" && refs.has(l.BatchRef));
   const decided = acc.length + rej.length;
   const saving = r2(accLines.reduce((a, l) => a + (num(l.AgencyClaimedGross) > 0 ? num(l.AgencyClaimedGross) - num(l.Gross) : 0), 0));
   const bars = (rows, total, colour) => rows.length ? rows.map(([k, v]) => `<div class="hb" style="grid-template-columns:minmax(120px,38%) 1fr 84px"><span title="${esc(k)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k)}</span><span class="t"><i style="width:${total ? Math.max(1, v / total * 100) : 0}%;background:${colour}"></i></span><span class="n">${kinaShort(v)}</span></div>`).join("") : `<div class="empty">Nothing accepted yet for this selection.</div>`;
@@ -284,17 +288,17 @@ function viewDash(){
   const topReasons = Object.entries(reasons).sort((a, b) => b[1] - a[1]).slice(0, 8);
   // overspend: accepted offline payments this year against each agency's PE budget
   const withBudget = S.agencies.filter(a => num(a.AnnualPEBudget) > 0);
-  const yearLines = S.lines.filter(l => { const b = S.batches.find(x => x.Title === l.BatchRef); return b && b.BatchStatus === "Accepted" && String(b.PayDate || "").startsWith(YEAR); });
+  const yearLines = S.lines.filter(l => { const b = S.batches.find(x => x.Title === l.BatchRef); return b && b.BatchStatus === "Accepted" && String(b.PayDate || b.ReceivedDate || b.EnteredDate || "").startsWith(YEAR); });
   const budgetRows = withBudget.map(a => { const spent = sumOf(yearLines.filter(l => l.AgencyName === a.Title), "Gross"); return [a.Title, spent, num(a.AnnualPEBudget)]; }).sort((x, y) => y[1]/y[2] - x[1]/x[2]);
   return `<div class="bar"><h2>Dashboard</h2><span class="grow"></span>
       <select class="f" id="dWeek"><option value="">All weeks</option>${weeks().map(w => opt(w, wk, "Week ending " + fmtDate(w))).join("")}</select>
       <select class="f" id="dAg"><option value="">All agencies</option>${[...new Set(S.batches.map(b => b.AgencyName).filter(Boolean))].sort().map(a => opt(a, ag)).join("")}</select></div>
     <div class="grid kpis dash">
-      <div class="card kpi k-b" data-go="batches|"><div class="l">Batches received</div><div class="v">${bs.length}</div><div class="s">${drafts.length} still in draft</div></div>
+      <div class="card kpi k-b" data-go="batches|"><div class="l">Batches received</div><div class="v">${bs.length}</div><div class="s">${migrated ? `${migrated} from the old register · ` : ""}${drafts.length} in draft</div></div>
       <div class="card kpi k-p" data-go="batches|Submitted for check"><div class="l">Awaiting check</div><div class="v">${pend.length}</div><div class="s">submitted, not decided</div></div>
       <div class="card kpi k-a" data-go="batches|Accepted"><div class="l">Accepted</div><div class="v">${acc.length}</div><div class="s">${accLines.length} payment line(s)</div></div>
       <div class="card kpi k-r ${rej.length ? "alert" : ""}" data-go="batches|Rejected"><div class="l">Rejected</div><div class="v">${rej.length}</div><div class="s">${decided ? Math.round(rej.length / decided * 100) + "% of decided" : "none decided yet"}</div></div>
-      <div class="card kpi k-h ${held.length ? "alert" : ""}" data-go="register|Held - marked paid"><div class="l">Lines held</div><div class="v">${held.length}</div><div class="s">marked "Paid" by hand</div></div>
+      <div class="card kpi k-h ${held.length + query.length ? "alert" : ""}" data-go="register|${held.length ? "Held - marked paid" : "Query"}"><div class="l">Lines to review</div><div class="v">${held.length + query.length}</div><div class="s">${held.length} marked "Paid" · ${query.length} to query</div></div>
       <div class="card kpi k-g"><div class="l">Accepted gross</div><div class="v sm">${kinaShort(sumOf(accLines, "Gross"))}</div><div class="s">net ${kinaShort(sumOf(accLines, "Net"))}</div></div>
       <div class="card kpi k-s"><div class="l">Saved by validation</div><div class="v sm">${kinaShort(saving)}</div><div class="s">agency claims less DPM figures</div></div>
     </div>
@@ -315,14 +319,14 @@ function viewBatches(){
     (!q || [b.Title, b.AgencyName, b.PayNo, b.BatchNumber, b.TransactionType].some(v => norm(v).includes(q))))
     .sort((a, b) => String(b.ReceivedDate || "").localeCompare(String(a.ReceivedDate || "")) || String(b.Title).localeCompare(String(a.Title)));
   const counts = s => S.batches.filter(b => b.BatchStatus === s).length;
-  const chips = ["", "Draft","Submitted for check","Accepted","Rejected","Returned to agency"].map(s => `<button class="chip ${f.status === s ? "on" : ""}" data-bs="${esc(s)}">${s || "All"}<span>${s ? counts(s) : S.batches.length}</span></button>`).join("");
+  const chips = ["", "Draft","Submitted for check","Accepted","Rejected","Returned to agency", ...(S.batches.some(b => b.BatchStatus === "Superseded") ? ["Superseded"] : [])].map(s => `<button class="chip ${f.status === s ? "on" : ""}" data-bs="${esc(s)}">${s || "All"}<span>${s ? counts(s) : S.batches.length}</span></button>`).join("");
   return `<div class="bar"><h2>Batches</h2><span class="grow"></span>
       <input type="search" id="bQ" placeholder="Search ref, agency, pay no…" value="${esc(f.q)}">
       <select class="f" id="bWeek"><option value="">All weeks</option>${weeks().map(w => opt(w, f.week, "Week ending " + fmtDate(w))).join("")}</select>
       ${canEnter() ? `<button class="btn primary" id="newB">+ New batch</button>` : ""}</div>
     <div class="bar chips">${chips}</div>
     <div class="tablewrap"><table><thead><tr><th>Batch Ref</th><th>Agency</th><th>Pay No</th><th>Pay Date</th><th>Transaction</th><th>Lines</th><th>Gross</th><th>Net</th><th>Status</th><th>Received</th><th>Entered by</th></tr></thead>
-    <tbody>${rows.map(b => { const ls = batchLines(b.Title); return `<tr data-open="${esc(b.id)}"><td class="mono"><b>${esc(b.Title)}</b></td><td>${esc(b.AgencyName)}</td><td class="mono">${esc(b.PayNo)}</td><td class="mono">${fmtDate(b.PayDate)}</td><td>${esc(b.TransactionType)}</td><td class="mono">${ls.length}</td><td class="mono">${kina(sumOf(ls, "Gross"))}</td><td class="mono">${kina(sumOf(ls, "Net"))}</td><td>${pill(b.BatchStatus)}</td><td class="mono">${fmtDate(b.ReceivedDate)}</td><td>${esc(b.EnteredBy)}</td></tr>`; }).join("") || `<tr><td colspan="11" class="empty">No batches match.</td></tr>`}</tbody></table></div>
+    <tbody>${rows.map(b => { const ls = batchLines(b.Title); return `<tr data-open="${esc(b.id)}"><td class="mono"><b>${esc(b.Title)}</b>${isMigrated(b) ? ` <span class="pill p-grey" title="${esc(b.SourceSheet || "")}">old register</span>` : ""}</td><td>${esc(b.AgencyName)}</td><td class="mono">${esc(b.PayNo)}</td><td class="mono">${fmtDate(b.PayDate)}</td><td>${esc(b.TransactionType)}</td><td class="mono">${ls.length}</td><td class="mono">${kina(sumOf(ls, "Gross"))}</td><td class="mono">${kina(sumOf(ls, "Net"))}</td><td>${pill(b.BatchStatus)}</td><td class="mono">${fmtDate(b.ReceivedDate)}</td><td>${esc(b.EnteredBy)}</td></tr>`; }).join("") || `<tr><td colspan="11" class="empty">No batches match.</td></tr>`}</tbody></table></div>
     <p class="count">${rows.length} batch(es)</p>`;
 }
 
@@ -544,6 +548,7 @@ function renderEditor(banner){
     <div class="edhead"><button class="btn" id="back">← Batches</button><h2>${esc(b.Title || "New batch")}</h2>${pill(b.BatchStatus || "Draft")}
       <span class="sub">${b.AgencyName ? esc(b.AgencyName) : ""}${b.PayNo ? " · Pay " + esc(b.PayNo) : ""}${b.ResubmissionOf ? " · resubmission of " + esc(b.ResubmissionOf) : ""}</span></div>
     ${b.BatchStatus === "Rejected" || b.BatchStatus === "Returned to agency" ? `<div class="banner err"><b>Rejected</b>${b.AcceptedBy ? " by " + esc(b.AcceptedBy) + " on " + fmtDate(b.AcceptedDate) : ""}${b.ReturnedDate ? " · returned to agency " + fmtDate(b.ReturnedDate) : ""}<div style="white-space:pre-wrap;margin-top:6px">${esc(b.RejectionReasons)}</div></div>` : ""}
+    ${isMigrated(b) ? `<div class="banner"><b>From the old register</b> (${esc(b.SourceSheet || "")}) - imported as it was typed, not checked against the paper documents.<div style="white-space:pre-wrap;margin-top:6px">${esc(b.BatchNotes || "")}</div></div>` : ""}
     <div id="edForm" class="${can ? "" : "readonly"}">
     <div class="sec s-ctl"><h3>1 · Batch Control Form</h3><div class="fg">${CTL.map(field).join("")}</div></div>
     <div class="sec s-sum"><h3>2 · DPM Validated Summary</h3><div class="fg">${SUM.map(field).join("")}
@@ -554,7 +559,7 @@ function renderEditor(banner){
       <tfoot><tr><td colspan="10">Totals (${ed.lines.length} line${ed.lines.length === 1 ? "" : "s"})</td><td id="tG">${kina(sumOf(ed.lines, "Gross"))}</td><td id="tT">${kina(sumOf(ed.lines, "Tax"))}</td><td id="tN">${kina(sumOf(ed.lines, "Net"))}</td><td colspan="6"></td></tr></tfoot></table></div>
       ${can ? `<div style="margin-top:10px"><button class="btn" id="addLn">+ Add line</button> <span class="note">Tick <b>Pink ✓</b> when the employee's Special Offline Payment Form is in the batch and matches. Tick <b>Paid?</b> if someone has written "Paid" on it.</span></div>` : ""}</div>
     </div>
-    <div class="sec s-chk" id="chkSec">${checksHtml(checks)}</div>
+    <div class="sec s-chk" id="chkSec">${isMigrated(b) ? migratedFlagsHtml() : checksHtml(checks)}</div>
     <div class="sec s-docs"><h3>4 · Scanned documents</h3><div id="docBox">${docsHtml()}</div></div>
     ${events.length ? `<div class="sec s-hist"><h3>History</h3><ul class="list hist">${events.map(e => `<li><span class="id mono">${esc(String(e.EventOn || "").replace("T", " "))}</span><span class="x"><b>${esc(e.EventType)}</b> - ${esc(e.EventBy)}${e.Details ? `<div class="note" style="white-space:pre-wrap">${esc(e.Details)}</div>` : ""}</span></li>`).join("")}</ul></div>` : ""}
     <div class="actions"><span class="note" id="actNote">${actionNote(errs.length, ownEntry)}</span><span class="grow"></span>${actionButtons(errs.length, ownEntry)}</div>
@@ -563,6 +568,12 @@ function renderEditor(banner){
     <datalist id="dlPay">${S.paycodes.map(p => `<option value="${esc(p.Title)}">${esc(p.CodeDescription || "")}</option>`).join("")}</datalist>`;
   if (!can) $$("#edForm input, #edForm select, #edForm textarea").forEach(x => x.disabled = true);
   bindEditor();
+}
+// Migrated batches: the old register has no Batch Control Form or summary, so the entry checks don't apply.
+// Show what the migration flagged on each line instead.
+function migratedFlagsHtml(){
+  const flagged = ed.lines.map((l, i) => ({ l, i })).filter(x => String(x.l.ValidationFlags || "").trim());
+  return `<h3>Flags from the migration</h3>${flagged.length ? `<p><b>${flagged.length} line(s) marked Query</b> - check them against the paper documents.</p><ul class="chk">${flagged.map(({ l, i }) => lines(l.ValidationFlags).map(f => `<li class="e"><span class="tag">Query</span><span><span class="rule">Line ${i+1}${l.EmployeeName ? " (" + esc(l.EmployeeName) + ")" : ""}</span> - ${esc(f)}</span></li>`).join("")).join("")}</ul>` : `<p class="okline">✓ Nothing flagged on these lines.</p>`}`;
 }
 function checksHtml(checks){
   const e = checks.filter(c => c.sev === "e"), w = checks.filter(c => c.sev === "w");
@@ -575,7 +586,8 @@ function actionNote(nErr, own){
   if (!canEnter()) return "Read only for your role.";
   if (s === "Draft") return nErr ? "Save as draft while you enter. It can be submitted once it has no errors, or a Checker can reject it." : "Ready to submit for checking.";
   if (s === "Submitted for check") return canCheck() ? (own ? "You entered this batch - another Checker must accept it." : nErr ? "Errors found - reject the batch and return it to the agency." : "All checks pass - accept or reject.") : "Waiting for a Checker.";
-  if (s === "Accepted") return `Accepted by ${ed.b.AcceptedBy || ""} on ${fmtDate(ed.b.AcceptedDate)} - locked.`;
+  if (s === "Superseded") return "Superseded - a repeated copy kept for the record; not counted in totals or duplicate checks.";
+  if (s === "Accepted") return isMigrated(ed.b) ? "Imported from the old register - counted in the totals; read only." : `Accepted by ${ed.b.AcceptedBy || ""} on ${fmtDate(ed.b.AcceptedDate)} - locked.`;
   return "Rejected - return it to the agency; a corrected batch is entered as a resubmission.";
 }
 function actionButtons(nErr, own){
