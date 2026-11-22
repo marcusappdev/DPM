@@ -56,6 +56,30 @@ header .rolesel{background:#1d3550;color:#fff;border:1px solid rgba(255,255,255,
 .readonly input,.readonly select,.readonly textarea{pointer-events:none;background:var(--grey-bg)!important}
 .kpi.k-b{--kc:#1d4e89}.kpi.k-p{--kc:#b45309}.kpi.k-a{--kc:#15803d}.kpi.k-r{--kc:#b91c1c}.kpi.k-h{--kc:#7c3aed}.kpi.k-g{--kc:#0f8a80}.kpi.k-s{--kc:#c8962e}
 .kpi .v.sm{font-size:22px}
+/* scanned batch */
+.sec.s-scan{--sc:#0e7490}
+@media (prefers-color-scheme:dark){.sec.s-scan{--sc:#38bdf8}}
+.scanbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.scanbar label.btn{cursor:pointer}
+.pages{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:12px}
+.pg{border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--surface2);display:flex;flex-direction:column;gap:6px}
+.pg.on{outline:3px solid var(--accent);outline-offset:1px}
+.pg img{width:100%;height:200px;object-fit:contain;background:#fff;border-radius:6px;cursor:zoom-in;border:1px solid var(--line)}
+.pg select{font-size:12px;padding:4px;border:1px solid var(--line);border-radius:6px;background:var(--surface);width:100%}
+.pg .pgn{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;font-weight:650}
+.btn.sm{padding:4px 10px;font-size:12px}
+input.auto,select.auto{background:#fff4cc!important;border-color:#d4a017!important}
+@media (prefers-color-scheme:dark){input.auto,select.auto{background:#3d3210!important}}
+.readnotes{background:var(--warn-bg);border-radius:8px;padding:8px 14px;margin:0 0 12px;font-size:13px}
+.readnotes ul{margin:4px 0 0;padding-left:18px}
+body.viewing main{margin-right:min(47vw,760px);margin-left:16px}
+.viewer{position:fixed;right:0;bottom:0;width:min(47vw,760px);background:var(--surface);border-left:1px solid var(--line);box-shadow:-8px 0 24px rgba(16,24,40,.14);z-index:30;display:flex;flex-direction:column}
+.viewer .vh{display:flex;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px;flex-wrap:wrap}
+.viewer .vh .grow{flex:1}
+.viewer .vb{flex:1;overflow:auto;background:#525659;display:flex;justify-content:center;align-items:flex-start;padding:14px}
+.viewer img{max-width:100%;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.45)}
+.viewer.zoom img{max-width:none;width:190%}
+@media (max-width:900px){body.viewing main{margin-right:0}.viewer{width:100%;height:55vh;top:auto!important}}
 </style>
 </head>
 <body>
@@ -74,8 +98,8 @@ header .rolesel{background:#1d3550;color:#fff;border:1px solid rgba(255,255,255,
 <dialog id="dlg"></dialog>
 <div id="toast" class="toast" role="status"></div>
 
-<script src="shared/dpm-config.js?v=20261122b"></script>
-<script src="shared/dpm-core.js?v=20261122"></script>
+<script src="shared/dpm-config.js?v=20261122c"></script>
+<script src="shared/dpm-core.js?v=20261122c"></script>
 <script>
 /* =====================================================================
    DPM Document Management Hub  v1.0
@@ -215,6 +239,8 @@ function checkBatch(b, ls, docs){
       if (other) W("Name differs", `${who}: employee ${emp} is "${other.EmployeeName}" in batch ${other.BatchRef} - check the number belongs to this person`, i);
     }
   });
+  const autoN = (ed && ed.b === b ? ed.auto?.size || 0 : 0) + ls.reduce((a, l) => a + (l._auto?.size || 0), 0);
+  if (autoN) W("Read automatically", `${autoN} value(s) were filled from the scan and are highlighted - check each against the page, then edit or leave it`);
   if (docs){
     const has = t => docs.some(d => d.DocumentType === t);
     if (b.Title && !has("Batch Control Form")) W("Documents", "No scan of the Batch Control Form attached yet");
@@ -245,6 +271,7 @@ function render(){
   const banner = (DEMO ? `<div class="banner">Demo mode - made-up agencies' batches and people, kept in this browser only until you refresh. Put the Entra app's client ID in shared/dpm-config.js to connect to SharePoint. Use the role list at the top right to try each role.</div>` : "")
     + (me.note ? `<div class="banner">${esc(me.note)}</div>` : "");
   if (ed) return renderEditor(banner);
+  document.body.classList.remove("viewing");
   $("#main").innerHTML = banner + ({ dash:viewDash, batches:viewBatches, register:viewRegister, ref:viewRef, settings:viewSettings }[view])();
   bindView();
 }
@@ -498,11 +525,11 @@ const SUM = [["TransactionType","Transaction Type","ttype",1],["DPMRegion","DPM 
 function openBatch(id){
   if (id === "new"){
     if (!canEnter()){ toast("Your role can't enter batches"); go("batches"); return; }
-    ed = { b:{ BatchStatus:"Draft", ReceivedDate:TODAY, FormType:"Offline Payment (Special Pay)", CaptureMethod:"Manual entry" }, lines:[blankLine()], removed:[], docs:[], isNew:true };
+    ed = { b:{ BatchStatus:"Draft", ReceivedDate:TODAY, FormType:"Offline Payment (Special Pay)", CaptureMethod:"Manual entry" }, lines:[blankLine()], removed:[], docs:[], isNew:true, auto:new Set(), scan:newScan() };
   } else {
     const b = S.batches.find(x => String(x.id) === String(id));
     if (!b){ toast("Batch not found"); go("batches"); return; }
-    ed = { b:{ ...b }, lines: batchLines(b.Title).sort((x, y) => String(x.Title).localeCompare(String(y.Title))).map(l => ({ ...l, MarkedPaid: l.LineStatus === "Held - marked paid" })), removed:[], docs:null };
+    ed = { b:{ ...b }, lines: batchLines(b.Title).sort((x, y) => String(x.Title).localeCompare(String(y.Title))).map(l => ({ ...l, MarkedPaid: l.LineStatus === "Held - marked paid" })), removed:[], docs:null, auto:new Set(), scan:newScan() };
     if (!ed.lines.length) ed.lines = [blankLine()];
     loadDocs();
   }
@@ -522,16 +549,18 @@ function field([k, label, type = "text", req, ph]){
   else if (type === "date") inp = `<input type="date" data-f="${k}" value="${esc(v)}">`;
   else if (type === "number" || type === "money") inp = `<input type="number" ${type === "money" ? 'step="0.01"' : 'step="1" min="0"'} data-f="${k}" value="${esc(v)}">`;
   else inp = `<input data-f="${k}" value="${esc(v)}" ${ph ? `placeholder="${esc(ph)}"` : ""}>`;
+  if (ed.auto?.has(k)) inp = inp.replace(/^<(input|select)/, `<$1 class="auto" title="Filled by Read automatically - check it against the scan"`);
   return `<label class="fld ${cls}">${lab}${inp}</label>`;
 }
 function lineRow(l, i, bad){
-  const n = (k, step = "0.01") => `<input class="n ${["Gross","Tax","Net"].includes(k) ? "m" : ""} ${bad ? "e" : ""}" type="number" step="${step}" data-l="${i}" data-k="${k}" value="${esc(l[k])}">`;
-  const t = (k, w, list) => `<input data-l="${i}" data-k="${k}" value="${esc(l[k])}" ${list ? `list="${list}"` : ""} style="${w ? "min-width:" + w + "px" : ""}">`;
+  const A = k => l._auto?.has(k) ? "auto" : "";
+  const n = (k, step = "0.01") => `<input class="n ${["Gross","Tax","Net"].includes(k) ? "m" : ""} ${bad ? "e" : ""} ${A(k)}" type="number" step="${step}" data-l="${i}" data-k="${k}" value="${esc(l[k])}">`;
+  const t = (k, w, list) => `<input class="${A(k)}" data-l="${i}" data-k="${k}" value="${esc(l[k])}" ${list ? `list="${list}"` : ""} style="${w ? "min-width:" + w + "px" : ""}">`;
   const rate = num(l.Gross) > 0 ? (num(l.Tax) / num(l.Gross) * 100).toFixed(1) + "%" : "";
   return `<tr class="${bad ? "bad" : ""}" data-row="${i}"><td class="rn">${i+1}</td><td>${t("EmployeeNo", 92)}</td><td>${t("EmployeeName", 150)}</td>
-    <td><select data-l="${i}" data-k="NatureOfClaim"><option></option>${NATURES.map(x => opt(x, l.NatureOfClaim)).join("")}</select></td>
+    <td><select class="${A("NatureOfClaim")}" data-l="${i}" data-k="NatureOfClaim"><option></option>${NATURES.map(x => opt(x, l.NatureOfClaim)).join("")}</select></td>
     <td>${t("PayCode", 70, "dlPay")}</td><td>${t("PaymentCategory", 90)}</td>
-    <td><input type="date" data-l="${i}" data-k="PeriodFrom" value="${esc(l.PeriodFrom)}"></td><td><input type="date" data-l="${i}" data-k="PeriodTo" value="${esc(l.PeriodTo)}"></td>
+    <td><input class="${A("PeriodFrom")}" type="date" data-l="${i}" data-k="PeriodFrom" value="${esc(l.PeriodFrom)}"></td><td><input class="${A("PeriodTo")}" type="date" data-l="${i}" data-k="PeriodTo" value="${esc(l.PeriodTo)}"></td>
     <td>${t("PeriodText", 120)}</td><td>${n("Fortnights", "0.1")}</td><td>${n("Gross")}</td><td>${n("Tax")}</td><td>${n("Net")}</td>
     <td class="mono rate" style="text-align:right">${rate}</td><td>${n("StatedTaxPct", "0.1")}</td>
     <td style="text-align:center"><input type="checkbox" data-l="${i}" data-k="PinkFormMatched" ${l.PinkFormMatched === "Yes" ? "checked" : ""} title="Matching Special Offline Payment Form is in the batch"></td>
@@ -560,9 +589,11 @@ function renderEditor(banner){
       ${can ? `<div style="margin-top:10px"><button class="btn" id="addLn">+ Add line</button> <span class="note">Tick <b>Pink ✓</b> when the employee's Special Offline Payment Form is in the batch and matches. Tick <b>Paid?</b> if someone has written "Paid" on it.</span></div>` : ""}</div>
     </div>
     <div class="sec s-chk" id="chkSec">${isMigrated(b) ? migratedFlagsHtml() : checksHtml(checks)}</div>
-    <div class="sec s-docs"><h3>4 · Scanned documents</h3><div id="docBox">${docsHtml()}</div></div>
+    ${scanHtml()}
+    <div class="sec s-docs"><h3>5 · Filed documents</h3><div id="docBox">${docsHtml()}</div></div>
     ${events.length ? `<div class="sec s-hist"><h3>History</h3><ul class="list hist">${events.map(e => `<li><span class="id mono">${esc(String(e.EventOn || "").replace("T", " "))}</span><span class="x"><b>${esc(e.EventType)}</b> - ${esc(e.EventBy)}${e.Details ? `<div class="note" style="white-space:pre-wrap">${esc(e.Details)}</div>` : ""}</span></li>`).join("")}</ul></div>` : ""}
     <div class="actions"><span class="note" id="actNote">${actionNote(errs.length, ownEntry)}</span><span class="grow"></span>${actionButtons(errs.length, ownEntry)}</div>
+    ${viewerHtml()}
     <datalist id="dlAg">${S.agencies.filter(a => a.AgencyActive !== "No").map(a => `<option value="${esc(a.Title)}">`).join("")}</datalist>
     <datalist id="dlRegions">${lines(setting("DPMRegions")).map(r => `<option value="${esc(r)}">`).join("")}</datalist>
     <datalist id="dlPay">${S.paycodes.map(p => `<option value="${esc(p.Title)}">${esc(p.CodeDescription || "")}</option>`).join("")}</datalist>`;
@@ -616,8 +647,8 @@ function bindEditor(){
   const form = $("#edForm");
   form.addEventListener("input", e => {
     const t = e.target;
-    if (t.dataset.f){ ed.b[t.dataset.f] = t.value; ed.dirty = true; refreshChecks(); }
-    else if (t.dataset.l != null){ const l = ed.lines[+t.dataset.l], k = t.dataset.k;
+    if (t.dataset.f){ ed.b[t.dataset.f] = t.value; ed.auto?.delete(t.dataset.f); t.classList.remove("auto"); ed.dirty = true; refreshChecks(); }
+    else if (t.dataset.l != null){ const l = ed.lines[+t.dataset.l], k = t.dataset.k; l._auto?.delete(k); t.classList.remove("auto");
       if (t.type === "checkbox") l[k] = k === "MarkedPaid" ? t.checked : (t.checked ? "Yes" : "No"); else l[k] = t.value;
       // fill net from gross - tax when net is still empty
       if ((k === "Gross" || k === "Tax") && l._autoNet !== false && (l.Net === "" || l._autoNet)){ if (l.Gross !== "" && l.Tax !== ""){ l.Net = r2(num(l.Gross) - num(l.Tax)); l._autoNet = true; const n = form.querySelector(`[data-l="${t.dataset.l}"][data-k="Net"]`); if (n) n.value = l.Net; } }
@@ -638,7 +669,7 @@ function bindEditor(){
   $("#aReject")?.addEventListener("click", rejectDialog);
   $("#aReturn")?.addEventListener("click", async () => { ed.b.ReturnedDate = TODAY; await saveBatch("Returned to agency", { event:"Returned to agency" }); });
   $("#aResub")?.addEventListener("click", startResubmission);
-  bindDocs();
+  bindDocs(); bindScan();
 }
 
 /* ---------------- numbering ---------------- */
@@ -698,7 +729,7 @@ async function saveBatch(newStatus, opts = {}){
         ...clean(l, L_FIELDS), TaxRatePct: num(l.Gross) > 0 ? r2(num(l.Tax) / num(l.Gross) * 100) : null, LineStatus:status, ValidationFlags: errs.filter(c => c.line === i).map(c => c.msg).join("\n") };
       const r = DEMO ? { id: l.id || "l" + Date.now() + i } : await saveListItem(L.lines, l.id, lf);
       l.id = l.id || r.id; Object.assign(l, lf);
-      const li = S.lines.findIndex(x => String(x.id) === String(l.id)); const copy = { ...l }; delete copy.MarkedPaid; delete copy._autoNet;
+      const li = S.lines.findIndex(x => String(x.id) === String(l.id)); const copy = { ...l }; delete copy.MarkedPaid; delete copy._autoNet; delete copy._auto;
       if (li >= 0) S.lines[li] = copy; else S.lines.push(copy);
     }
     for (const g of ed.removed){ if (!DEMO) await deleteListItem(L.lines, g.id); S.lines = S.lines.filter(x => String(x.id) !== String(g.id)); }
@@ -742,7 +773,7 @@ function rejectDialog(){
 async function startResubmission(){
   const old = ed.b;
   ed = { b:{ ...Object.fromEntries(B_FIELDS.map(k => [k, old[k]])), BatchStatus:"Draft", ResubmissionOf:old.Title, ReceivedDate:TODAY, RejectionReasons:"", ReturnedDate:"", AcceptedBy:"", AcceptedDate:"", VerifiedBy:"", VerifiedDate:"", EnteredBy:"", EnteredDate:"", CaptureMethod:"Manual entry" },
-    lines: ed.lines.map(l => { const c = {}; L_FIELDS.forEach(k => c[k] = l[k] ?? ""); c.MarkedPaid = false; return c; }), removed:[], docs:[], isNew:true, dirty:true };
+    lines: ed.lines.map(l => { const c = {}; L_FIELDS.forEach(k => c[k] = l[k] ?? ""); c.MarkedPaid = false; return c; }), removed:[], docs:[], isNew:true, dirty:true, auto:new Set(), scan:newScan() };
   history.replaceState(null, "", "#batch/new");
   render(); toast(`Copied from ${old.Title} - correct it from the new documents, then save`);
 }
@@ -792,6 +823,343 @@ function bindDocs(){
     } catch(e){ toast((ok ? `${ok} uploaded, then: ` : "Upload failed: ") + e.message); }
     loadDocs();
   });
+}
+
+/* =====================================================================
+   SCANNED BATCH - load the scan, view pages beside the form, Read
+   automatically (Claude on Amazon Bedrock, Australia), file the pages as
+   separate documents. A web page can't drive a scanner: the scanner's own
+   software (or the Windows Scan app) saves the batch as a PDF or images.
+   ===================================================================== */
+const READ_TYPES = ["Auto-detect", ...DOC_TYPES];
+const newScan = () => ({ pages:[], notes:[], keep:true, view:null, zoom:false, busy:false });
+const readOn = () => setting("ReadAutomatically", "Off") !== "Off" && /^https:\/\//.test(setting("AwsApiUrl"));
+let pdfjsLib = null;
+async function loadPdfJs(){
+  if (!pdfjsLib){
+    pdfjsLib = await import("https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+  }
+  return pdfjsLib;
+}
+const loadScript = src => new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => no(new Error("couldn't load " + src)); document.head.appendChild(s); });
+async function loadPdfLib(){ if (!window.PDFLib) await loadScript("https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"); return window.PDFLib; }
+
+// Each page -> a JPEG about 1800 px on its long side (sharp enough for handwriting) + a thumbnail
+function pageImages(c){
+  const t = document.createElement("canvas"), s = 220 / Math.max(c.width, c.height);
+  t.width = Math.round(c.width * s); t.height = Math.round(c.height * s); t.getContext("2d").drawImage(c, 0, 0, t.width, t.height);
+  return { jpg: c.toDataURL("image/jpeg", 0.85), thumb: t.toDataURL("image/jpeg", 0.75), w:c.width, h:c.height };
+}
+function whiteCanvas(w, h){ const c = document.createElement("canvas"); c.width = Math.round(w); c.height = Math.round(h); const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); return c; }
+async function pagesFromFiles(files, onProgress){
+  const out = [];
+  for (const f of files){
+    if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)){
+      const lib = await loadPdfJs(), bytes = new Uint8Array(await f.arrayBuffer());
+      const doc = await lib.getDocument({ data: bytes.slice() }).promise;
+      for (let p = 1; p <= doc.numPages; p++){
+        const page = await doc.getPage(p), v1 = page.getViewport({ scale:1 });
+        const vp = page.getViewport({ scale: Math.min(3, 1800 / Math.max(v1.width, v1.height)) });
+        const c = whiteCanvas(vp.width, vp.height);
+        await page.render({ canvasContext:c.getContext("2d"), viewport:vp }).promise;
+        out.push({ file:f, bytes, srcPage:p - 1, isPdf:true, ...pageImages(c) });
+        onProgress?.(out.length);
+      }
+    } else if (/^image\//.test(f.type)){
+      const url = URL.createObjectURL(f);
+      const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error(`${f.name} isn't an image the browser can open (HEIC photos: save as JPEG first)`)); i.src = url; });
+      const s = Math.min(1, 1800 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = whiteCanvas(img.naturalWidth * s, img.naturalHeight * s); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      out.push({ file:f, isPdf:false, ...pageImages(c) });
+      onProgress?.(out.length);
+    } else throw new Error(`${f.name}: only PDF or image files`);
+  }
+  return out.map(p => ({ ...p, type:"Auto-detect", emp:"", status:"", note:"", rot:0 }));
+}
+
+/* ---------------- what to read: one schema for every document type ---------------- */
+const sS = d => ({ type:["string","null"], ...(d ? { description:d } : {}) }), sN = d => ({ type:["number","null"], ...(d ? { description:d } : {}) }), sB = d => ({ type:["boolean","null"], ...(d ? { description:d } : {}) });
+const obj = props => ({ type:"object", properties:props });
+function readSchema(){
+  return { type:"object", required:["documentType"], properties:{
+    documentType:{ type:"string", enum:DOC_TYPES, description:"Which kind of document this page is" },
+    batchControl: obj({ department:sS(), payNo:sS("e.g. 23/26"), payDate:sS(), formTypeTicked:{ type:["string","null"], enum:[...FORM_TYPES, null] }, numberOfForms:sN(), batchNumber:sS(),
+      firstAdviceNo:sS(), lastAdviceNo:sS(), raisedBy:sS(), telephone:sS(), dateRaised:sS(), publicAccountsOfficer:sS(), publicAccountsDate:sS(), publicAccountsStamp:sB("true if the Public Accounts stamp is on the page") }),
+    summary: obj({ agency:sS(), transactionType:sS("e.g. Gratuity, Final Entitlement, Higher Duties Allowance, Outstanding Salary"), dpmRegionOrBranch:sS(), summaryRef:sS("e.g. Costing for batch #003"),
+      preparedBy:sS(), preparedDate:sS(), checkedBy:sS(), checkedDate:sS(), validatedBy:sS(), validatedDate:sS(), certifiedBy:sS(), certifiedDate:sS(),
+      totalGross:sN(), totalTax:sN(), totalNet:sN(), agencyClaimedGross:sN("only when the page ALSO shows the agency's own claimed total, separate from the DPM validated figures"),
+      lines:{ type:"array", items: obj({ employeeNo:sS(), employeeName:sS(), natureOfClaim:sS("e.g. Deceased, Resignation"), paymentCategory:sS("e.g. MILOL, MILOL + MILOF"),
+        periodFrom:sS(), periodTo:sS(), periodAsWritten:sS(), fortnights:sN(), gross:sN(), tax:sN(), net:sN(), taxRateStatedPct:sN("tax % written in the remarks, e.g. Marginal Tax @ 40% -> 40"),
+        remarks:sS(), markedPaid:sB("true if 'Paid' has been handwritten or ticked against this employee") }) } }),
+    paymentForm: obj({ employeeNo:sS("Employee Selection #"), employeeName:sS(), department:sS(), reason:sS(), periodEndDate:sS(),
+      payLines:{ type:"array", items: obj({ date:sS(), payCode:sS(), units:sN(), rate:sN(), amount:sN() }) },
+      preparedBy:sS(), preparedDate:sS(), checkedBy:sS(), checkedDate:sS(), markedPaid:sB("true if 'Paid' is handwritten on the form") }),
+    calculation: obj({ employeeNo:sS(), employeeName:sS(), totalGross:sN(), tax:sN(), net:sN(), periodAsWritten:sS() }),
+    unclear:{ type:"array", items:{ type:"string" }, description:"fields that were blank, crossed out or hard to read" }
+  } };
+}
+function readInstructions(pg){
+  const extra = S.doctypes.filter(d => String(d.ReadInstructions || "").trim()).map(d => `${d.Title}: ${d.ReadInstructions}`).join("\n");
+  return `${pg.type === "Auto-detect" ? "First decide which kind of document this page is." : `This page is a ${pg.type}.`}
+Fill ONLY the section for that kind of document and leave the other sections out:
+- Batch Control Form (cover sheet listing the type of form ticked, pay no, number of forms) -> batchControl
+- DPM Validated Summary (summary / costing table of one or more employees with gross, tax, net) -> summary, one entry in "lines" per employee row
+- Special Offline Payment Form (pink form for ONE employee, with pay code lines) -> paymentForm
+- Gratuity, Higher Duties or Final Entitlements calculation sheet -> calculation (the employee's final totals)
+- Agency Schedule or anything else -> only documentType
+If a summary page shows both an agency claim table and a DPM validated table, use the DPM validated figures for the lines and put the agency's claimed total gross in agencyClaimedGross.
+Agencies the Hub knows: ${S.agencies.map(a => a.Title).join("; ")}.
+${extra}`.trim();
+}
+async function callReader(pg){
+  const tok = DEMO ? "demo" : await idToken();
+  const r = await fetch(setting("AwsApiUrl"), { method:"POST", headers:{ Authorization:"Bearer " + tok, "Content-Type":"application/json" },
+    body: JSON.stringify({ image: pg.jpg.split(",")[1], format:"jpeg", schema: readSchema(), instructions: readInstructions(pg) }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(r.status === 401 ? "the reading service didn't accept your sign-in" : r.status === 429 ? "too many pages at once - wait a moment" : j.error || j.message || `reading service error ${r.status}`);
+  return j.fields || {};
+}
+
+/* ---------------- apply what was read to the batch ---------------- */
+const FIELD_LABEL = k => (CTL.concat(SUM).find(x => x[0] === k) || [k, k])[1];
+const empKey = v => String(v ?? "").toUpperCase().replace(/\s+/g, "");
+function toDate(v, notes, what){
+  if (v == null || v === "") return null;
+  let s = String(v).trim(), m;
+  if ((m = /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/.exec(s))) s = `${m[3].length === 2 ? "20" + m[3] : m[3]}-${pad(m[2])}-${pad(m[1])}`;
+  if (isRealDate(s)) return s;
+  notes.push(`${what}: "${v}" isn't a real date - enter it by hand`); return null;
+}
+function matchTType(v){ const n = norm(v); if (!n) return null; const t = S.ttypes.find(x => norm(x.Title) === n || lines(x.Aliases).some(a => norm(a) === n) || n.includes(norm(x.Title))); return t ? t.Title : null; }
+function applyRead(pg, f){
+  const notes = [], P = `Page ${pg.n}`;
+  if (DOC_TYPES.includes(f.documentType)) pg.type = f.documentType;
+  const setB = (k, v) => {
+    if (v == null || v === "") return;
+    const cur = ed.b[k];
+    if (cur == null || String(cur).trim() === ""){ ed.b[k] = v; ed.auto.add(k); }
+    else if (norm(cur) !== norm(v) && !(typeof v === "number" && Math.abs(num(cur) - v) < 0.005)) notes.push(`${P}: ${FIELD_LABEL(k)} on the page is "${v}", the form has "${cur}" - kept the form's value`);
+  };
+  const setAgency = v => { if (!v) return; const a = matchAgency(v); setB("AgencyName", a ? a.Title : String(v).trim()); if (!a) notes.push(`${P}: agency "${v}" isn't in the Agencies list`); };
+  const lineFor = (emp, name) => {
+    const k = empKey(emp);
+    let l = k && ed.lines.find(x => empKey(x.EmployeeNo) === k);
+    if (!l && name) l = ed.lines.find(x => norm(x.EmployeeName) && norm(x.EmployeeName) === norm(name));
+    if (!l){ l = ed.lines.find(x => !x.EmployeeNo && !x.EmployeeName && !x.Gross); if (!l){ l = blankLine(); ed.lines.push(l); } }
+    l._auto ||= new Set(); return l;
+  };
+  const setL = (l, k, v) => {
+    if (v == null || v === "") return;
+    if (l[k] == null || String(l[k]).trim() === "" || (k === "PinkFormMatched" && l[k] === "No")){ l[k] = v; l._auto.add(k); }
+    else if (norm(l[k]) !== norm(v) && !(typeof v === "number" && Math.abs(num(l[k]) - v) < 0.005)) notes.push(`${P}: ${l.EmployeeName || l.EmployeeNo} - ${k} on the page is ${typeof v === "number" ? kina(v) : `"${v}"`}, the line has ${typeof v === "number" ? kina(l[k]) : `"${l[k]}"`}`);
+  };
+  const bc = f.batchControl, su = f.summary, pf = f.paymentForm, ca = f.calculation;
+  if (bc && pg.type === "Batch Control Form"){
+    setAgency(bc.department); setB("PayNo", bc.payNo); setB("PayDate", toDate(bc.payDate, notes, `${P} pay date`));
+    if (bc.formTypeTicked) setB("FormType", bc.formTypeTicked); if (bc.numberOfForms != null) setB("NumberOfForms", bc.numberOfForms);
+    setB("BatchNumber", bc.batchNumber); setB("FirstAdviceNo", bc.firstAdviceNo); setB("LastAdviceNo", bc.lastAdviceNo); setB("RaisedBy", bc.raisedBy);
+    setB("RaisedByPhone", bc.telephone); setB("RaisedDate", toDate(bc.dateRaised, notes, `${P} date raised`)); setB("PAOfficer", bc.publicAccountsOfficer);
+    setB("PADate", toDate(bc.publicAccountsDate, notes, `${P} public accounts date`)); if (bc.publicAccountsStamp != null) setB("PAStamped", bc.publicAccountsStamp ? "Yes" : "No");
+  }
+  if (su && pg.type === "DPM Validated Summary"){
+    setAgency(su.agency);
+    if (su.transactionType){ const t = matchTType(su.transactionType); if (t) setB("TransactionType", t); else notes.push(`${P}: transaction type "${su.transactionType}" isn't in the list - choose it by hand`); }
+    setB("DPMRegion", su.dpmRegionOrBranch); setB("SummaryRef", su.summaryRef);
+    [["SummaryPreparedBy", su.preparedBy], ["SummaryCheckedBy", su.checkedBy], ["SummaryValidatedBy", su.validatedBy], ["SummaryCertifiedBy", su.certifiedBy]].forEach(([k, v]) => setB(k, v));
+    [["SummaryPreparedDate", su.preparedDate, "prepared date"], ["SummaryCheckedDate", su.checkedDate, "checked date"], ["SummaryValidatedDate", su.validatedDate, "validated date"], ["SummaryCertifiedDate", su.certifiedDate, "certified date"]].forEach(([k, v, w]) => setB(k, toDate(v, notes, `${P} ${w}`)));
+    ["TotalGross","TotalTax","TotalNet","AgencyClaimedGross"].forEach((k, i) => { const v = [su.totalGross, su.totalTax, su.totalNet, su.agencyClaimedGross][i]; if (v != null) setB(k, v); });
+    (su.lines || []).forEach(x => {
+      if (!x.employeeNo && !x.employeeName) return;
+      const l = lineFor(x.employeeNo, x.employeeName);
+      setL(l, "EmployeeNo", x.employeeNo ? empKey(x.employeeNo) : null); setL(l, "EmployeeName", x.employeeName);
+      if (x.natureOfClaim){ const nat = NATURES.find(n => norm(x.natureOfClaim).startsWith(norm(n))); setL(l, "NatureOfClaim", nat || null); }
+      setL(l, "PaymentCategory", x.paymentCategory); setL(l, "PeriodFrom", toDate(x.periodFrom, notes, `${P} ${x.employeeName || ""} period from`)); setL(l, "PeriodTo", toDate(x.periodTo, notes, `${P} ${x.employeeName || ""} period to`));
+      setL(l, "PeriodText", x.periodAsWritten); setL(l, "Fortnights", x.fortnights); setL(l, "Gross", x.gross); setL(l, "Tax", x.tax); setL(l, "Net", x.net);
+      setL(l, "StatedTaxPct", x.taxRateStatedPct); setL(l, "Remarks", x.remarks);
+      if (x.markedPaid){ l.MarkedPaid = true; l._auto.add("MarkedPaid"); notes.push(`${P}: "Paid" is marked against ${x.employeeName || x.employeeNo} - line held`); }
+    });
+  }
+  if (pf && pg.type === "Special Offline Payment Form"){
+    const l = lineFor(pf.employeeNo, pf.employeeName);
+    setL(l, "EmployeeNo", pf.employeeNo ? empKey(pf.employeeNo) : null); setL(l, "EmployeeName", pf.employeeName);
+    const pl = (pf.payLines || []).filter(x => x.amount != null);
+    const gross = r2(pl.filter(x => !/^tax$/i.test(String(x.payCode || "").trim())).reduce((a, x) => a + num(x.amount), 0));
+    const tax = r2(pl.filter(x => /^tax$/i.test(String(x.payCode || "").trim())).reduce((a, x) => a + num(x.amount), 0));
+    const code = (pl.find(x => !/^tax$/i.test(String(x.payCode || "").trim())) || {}).payCode;
+    const tol = num(setting("AmountTolerance", "0")) + 0.005;
+    if (String(l.Gross ?? "") === "" && gross > 0){ setL(l, "Gross", gross); setL(l, "Tax", tax); setL(l, "Net", r2(gross - tax)); setL(l, "PinkFormMatched", "Yes"); }
+    else if (gross > 0){
+      if (Math.abs(num(l.Gross) - gross) <= tol && Math.abs(num(l.Tax) - tax) <= tol) setL(l, "PinkFormMatched", "Yes");
+      else notes.push(`${P}: pink form for ${pf.employeeName || pf.employeeNo} shows gross ${kina(gross)}, tax ${kina(tax)} - the summary line has ${kina(l.Gross)}, ${kina(l.Tax)}. Not matched.`);
+    }
+    setL(l, "PayCode", code); setL(l, "Reason", pf.reason); setL(l, "PeriodEndDate", toDate(pf.periodEndDate, notes, `${P} period end date`));
+    if (pf.markedPaid){ l.MarkedPaid = true; l._auto.add("MarkedPaid"); notes.push(`${P}: "Paid" is written on ${pf.employeeName || pf.employeeNo}'s pink form - line held`); }
+    pg.emp = l.EmployeeNo || pg.emp;
+  }
+  if (ca && /Calculation$/.test(pg.type)){
+    const k = empKey(ca.employeeNo), l = ed.lines.find(x => (k && empKey(x.EmployeeNo) === k) || (ca.employeeName && norm(x.EmployeeName) === norm(ca.employeeName)));
+    if (!l) notes.push(`${P}: calculation for ${ca.employeeName || ca.employeeNo || "an employee"} doesn't match any line`);
+    else {
+      pg.emp = l.EmployeeNo || pg.emp;
+      [["gross", ca.totalGross, "Gross"], ["tax", ca.tax, "Tax"], ["net", ca.net, "Net"]].forEach(([w, v, key]) => {
+        if (v != null && String(l[key] ?? "") !== "" && Math.abs(num(l[key]) - v) > 0.01) notes.push(`${P}: calculation sheet for ${l.EmployeeName || l.EmployeeNo} gives ${w} ${kina(v)}, the line has ${kina(l[key])}`);
+      });
+    }
+  }
+  (f.unclear || []).forEach(u => notes.push(`${P}: unclear - ${u}`));
+  return notes;
+}
+
+/* ---------------- panel ---------------- */
+function scanHtml(){
+  const sc = ed.scan, can = canEnter() && !["Accepted","Superseded"].includes(ed.b.BatchStatus);
+  if (!can && !sc.pages.length) return "";
+  const on = readOn(), pages = sc.pages, read = pages.filter(p => p.status === "read").length;
+  const empOpts = cur => `<option value="">Employee…</option>${ed.lines.filter(l => l.EmployeeNo).map(l => opt(l.EmployeeNo, cur, `${l.EmployeeNo} ${l.EmployeeName || ""}`)).join("")}`;
+  const st = p => p.status === "reading" ? `<span class="pill p-info">Reading…</span>` : p.status === "read" ? `<span class="pill p-ok">Read ✓</span>` : p.status === "error" ? `<span class="pill p-crit" title="${esc(p.note)}">Error</span>` : "";
+  return `<div class="sec s-scan" id="scanSec"><h3>4 · Scanned batch</h3>
+    <div class="scanbar">
+      ${can ? `<label class="btn ${pages.length ? "" : "primary"}"><input type="file" id="scF" multiple accept=".pdf,application/pdf,image/*" hidden>${pages.length ? "+ Add more pages" : "Load scanned batch (PDF or images)"}</label>` : ""}
+      ${pages.length && can ? `<button class="btn primary" id="scAll" ${on && !sc.busy ? "" : "disabled"}>Read all pages${read ? ` (${pages.length - read} left)` : ""}</button>
+        <button class="btn" id="scFile" ${sc.busy ? "disabled" : ""}>File documents</button>
+        <label class="note"><input type="checkbox" id="scKeep" ${sc.keep ? "checked" : ""}> also keep the complete scan</label>
+        <button class="btn" id="scClear" ${sc.busy ? "disabled" : ""}>Clear</button>` : ""}
+      <span class="grow"></span>
+      <span class="note">${on ? `Read automatically: <b>${esc(setting("ReadAutomatically"))}</b>` : "Read automatically is off (Settings: AwsApiUrl, ReadAutomatically)"}</span>
+    </div>
+    ${sc.busyText ? `<p class="note"><b>${esc(sc.busyText)}</b></p>` : ""}
+    ${sc.notes.length ? `<div class="readnotes"><b>Check these against the scan:</b><ul>${sc.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}
+    ${pages.length ? `<div class="pages">${pages.map((p, i) => `<div class="pg ${sc.view === i ? "on" : ""}">
+        <img src="${p.thumb}" data-view="${i}" alt="Page ${p.n}" style="transform:rotate(${p.rot}deg)">
+        <div class="pgn"><span>Page ${p.n}</span>${st(p)}</div>
+        <select data-pgt="${i}" ${can ? "" : "disabled"}>${READ_TYPES.map(t => opt(t, p.type)).join("")}</select>
+        <select data-pge="${i}" ${can ? "" : "disabled"}>${empOpts(p.emp)}</select>
+        ${can ? `<button class="btn sm" data-read="${i}" ${on && !sc.busy ? "" : "disabled"}>${p.status === "read" ? "Read again" : "Read automatically"}</button>` : ""}
+      </div>`).join("")}</div>
+      <p class="note">Click a page to open it beside the form. Values filled from a scan are <span style="background:#fff4cc;padding:0 4px;border-radius:3px">highlighted</span> until someone checks them. <b>File documents</b> saves each run of pages with the same type and employee as one PDF in ${esc(L.docs)}.</p>`
+    : `<p class="note">Scan the whole batch with the scanner's own software (or the Windows Scan app) to a PDF, then load it here. Phone photos work too. Each page is shown beside the form${on ? " and can be read automatically" : ""}.</p>`}
+  </div>`;
+}
+function viewerHtml(){
+  const sc = ed.scan, p = sc.view != null ? sc.pages[sc.view] : null;
+  document.body.classList.toggle("viewing", !!p);
+  if (!p) return "";
+  const top = ($("header")?.offsetHeight || 64);
+  return `<div class="viewer ${sc.zoom ? "zoom" : ""}" style="top:${top}px">
+    <div class="vh"><b>Page ${p.n} of ${sc.pages.length}</b><span class="note">${esc(p.type)}${p.emp ? " · " + esc(p.emp) : ""}</span><span class="grow"></span>
+      <button class="btn sm" data-vp="-1" ${sc.view === 0 ? "disabled" : ""}>‹ Prev</button><button class="btn sm" data-vp="1" ${sc.view === sc.pages.length - 1 ? "disabled" : ""}>Next ›</button>
+      <button class="btn sm" data-vrot="1" title="Rotate">⟳</button><button class="btn sm" data-vzoom="1">${sc.zoom ? "Fit" : "Zoom"}</button><button class="btn sm" data-vx="1" title="Close">✕</button></div>
+    <div class="vb"><img src="${p.jpg}" alt="Page ${p.n}" style="transform:rotate(${p.rot}deg)${p.rot % 180 ? ";margin:15% 0" : ""}"></div></div>`;
+}
+function keepScroll(fn){ const y = scrollY; fn(); scrollTo(0, y); }
+function bindScan(){
+  const sec = $("#scanSec"), sc = ed.scan;
+  $(".viewer")?.addEventListener("click", e => {
+    const t = e.target.closest("button"); if (!t) return;
+    if (t.dataset.vp){ sc.view = Math.max(0, Math.min(sc.pages.length - 1, sc.view + +t.dataset.vp)); }
+    if (t.dataset.vrot) sc.pages[sc.view].rot = (sc.pages[sc.view].rot + 90) % 360;
+    if (t.dataset.vzoom) sc.zoom = !sc.zoom;
+    if (t.dataset.vx) sc.view = null;
+    keepScroll(render);
+  });
+  if (!sec) return;
+  sec.addEventListener("click", async e => {
+    const v = e.target.closest("[data-view]"); if (v){ sc.view = +v.dataset.view; keepScroll(render); return; }
+    const r = e.target.closest("[data-read]"); if (r){ await readPages([+r.dataset.read]); return; }
+    if (e.target.id === "scAll") await readPages(sc.pages.map((p, i) => p.status === "read" ? -1 : i).filter(i => i >= 0));
+    if (e.target.id === "scFile") await fileScan();
+    if (e.target.id === "scClear" && confirm("Remove the loaded pages? (Filed documents stay in SharePoint.)")){ ed.scan = newScan(); keepScroll(render); }
+  });
+  sec.addEventListener("change", async e => {
+    const t = e.target;
+    if (t.dataset.pgt) sc.pages[+t.dataset.pgt].type = t.value;
+    if (t.dataset.pge) sc.pages[+t.dataset.pge].emp = t.value;
+    if (t.id === "scKeep") sc.keep = t.checked;
+    if (t.id === "scF" && t.files.length){
+      const files = [...t.files]; sc.busy = true; sc.busyText = "Opening the scan…"; keepScroll(render);
+      try {
+        const pages = await pagesFromFiles(files, n => { sc.busyText = `Opening the scan… ${n} page(s)`; const b = $("#scanSec .note b"); if (b) b.textContent = sc.busyText; });
+        pages.forEach(p => { p.n = sc.pages.length + 1; sc.pages.push(p); });
+        toast(`${pages.length} page(s) loaded`);
+        if (sc.view == null && sc.pages.length) sc.view = 0;
+      } catch(err){ toast("Couldn't open the scan: " + err.message); }
+      sc.busy = false; sc.busyText = ""; keepScroll(render);
+    }
+  });
+}
+async function readPages(idx){
+  const sc = ed.scan; if (!idx.length) return;
+  if (!readOn()) return toast("Read automatically is off - an Admin sets AwsApiUrl and ReadAutomatically in Settings");
+  sc.busy = true; let ok = 0, bad = 0;
+  for (const i of idx){
+    const p = sc.pages[i]; p.status = "reading"; sc.busyText = `Reading page ${p.n} (${ok + bad + 1} of ${idx.length})…`; keepScroll(render);
+    try { const f = await callReader(p); sc.notes.push(...applyRead(p, f)); p.status = "read"; p.note = ""; ok++; ed.dirty = true; }
+    catch(e){ p.status = "error"; p.note = e.message; bad++; toast(`Page ${p.n}: ${e.message}`); }
+  }
+  sc.busy = false; sc.busyText = "";
+  if (ok && ed.b.Title) logEvent(ed.b.Title, "Read automatically", `${ok} page(s) read${bad ? `, ${bad} failed` : ""}`);
+  keepScroll(render);
+  toast(`${ok} page(s) read${bad ? `, ${bad} couldn't be read` : ""} - check the highlighted values`);
+}
+// Split the scan into documents: each run of pages with the same type and employee becomes one PDF
+async function fileScan(){
+  const sc = ed.scan, b = ed.b;
+  if (!b.Title || ed.dirty) return toast("Save the batch first (Save draft) - documents are filed under its Batch Ref");
+  const groups = [];
+  sc.pages.forEach(p => {
+    const type = p.type === "Auto-detect" ? "Other Supporting Document" : p.type, last = groups[groups.length - 1];
+    if (last && last.type === type && last.emp === p.emp) last.pages.push(p); else groups.push({ type, emp:p.emp, pages:[p] });
+  });
+  if (!confirm(`File ${groups.length} document(s) from ${sc.pages.length} page(s) into ${L.docs}/${safeName(b.AgencyName)}/${b.Title}?${sc.keep ? " The complete scan is kept as well." : ""}`)) return;
+  sc.busy = true; let done = 0;
+  try {
+    const PL = await loadPdfLib();
+    if (!DEMO && !docDrive) docDrive = await libraryDrive(L.docs);
+    if (!DEMO && !docDrive) throw new Error(`the ${L.docs} library isn't set up yet`);
+    const srcDocs = new Map();
+    const folder = `${safeName(b.AgencyName)}/${b.Title}`;
+    const put = async (name, blob, meta) => {
+      if (DEMO) S.docs.push({ id:"doc" + Date.now() + Math.random(), FileLeafRef:name, url:URL.createObjectURL(blob), ...meta });
+      else { const item = await uploadToDrive(docDrive, folder, name, blob); await tagDriveItem(docDrive, item.id, meta); }
+    };
+    for (const g of groups){
+      sc.busyText = `Filing document ${done + 1} of ${groups.length}…`; keepScroll(render);
+      const out = await PL.PDFDocument.create();
+      for (const p of g.pages){
+        let page;
+        if (p.isPdf){
+          if (!srcDocs.has(p.bytes)) srcDocs.set(p.bytes, await PL.PDFDocument.load(p.bytes, { ignoreEncryption:true }));
+          [page] = await out.copyPages(srcDocs.get(p.bytes), [p.srcPage]); out.addPage(page);
+        } else {
+          const img = await out.embedJpg(Uint8Array.from(atob(p.jpg.split(",")[1]), c => c.charCodeAt(0)));
+          page = out.addPage([p.w * 0.75, p.h * 0.75]); page.drawImage(img, { x:0, y:0, width:p.w * 0.75, height:p.h * 0.75 });
+        }
+        if (p.rot) page.setRotation(PL.degrees(((page.getRotation().angle || 0) + p.rot) % 360));
+      }
+      const blob = new Blob([await out.save()], { type:"application/pdf" });
+      const ln = ed.lines.find(l => l.EmployeeNo && l.EmployeeNo === g.emp);
+      const pr = g.pages.length > 1 ? `p${g.pages[0].n}-${g.pages[g.pages.length - 1].n}` : `p${g.pages[0].n}`;
+      const name = `${b.Title} ${g.type}${g.emp ? " " + g.emp : ""} ${pr}.pdf`.replace(/\s+/g, " ");
+      await put(name, blob, { BatchRef:b.Title, AgencyName:b.AgencyName, DocumentType:g.type, EmployeeNo:g.emp || "", EmployeeName:ln?.EmployeeName || "",
+        PayNo:b.PayNo || "", PayDate:b.PayDate || "", TransactionType:b.TransactionType || "", PageCount:g.pages.length, DocAmount: ln ? num(ln.Gross) : null,
+        DocStatus:"Received", ReadMethod: g.pages.some(p => p.status === "read") ? "Scanned - read automatically" : "Manual entry" });
+      done++;
+    }
+    if (sc.keep){
+      for (const f of [...new Set(sc.pages.map(p => p.file))]){
+        sc.busyText = "Keeping the complete scan…"; keepScroll(render);
+        await put(`${b.Title} Complete scan - ${safeName(f.name)}`, f, { BatchRef:b.Title, AgencyName:b.AgencyName, DocumentType:"Other Supporting Document", PayNo:b.PayNo || "", PayDate:b.PayDate || "",
+          TransactionType:b.TransactionType || "", DocStatus:"Received", ReadMethod:"Manual entry", DocNotes:"Complete scan of the batch as received" });
+      }
+    }
+    await logEvent(b.Title, "Document added", `${done} document(s) filed from ${sc.pages.length} scanned page(s)${sc.keep ? ", plus the complete scan" : ""}`);
+    toast(`${done} document(s) filed`);
+    ed.scan = newScan();
+  } catch(e){ toast((done ? `${done} filed, then: ` : "Filing failed: ") + e.message); }
+  sc.busy = false; sc.busyText = "";
+  loadDocs();
 }
 
 /* =====================================================================

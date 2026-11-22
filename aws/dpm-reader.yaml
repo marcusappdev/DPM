@@ -1,0 +1,175 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  DPM Document Management Hub - "Read automatically" service. A small Lambda behind an
+  HTTP API that sends one scanned page to Claude on Amazon Bedrock (Australia inference
+  profile) and returns the fields it read. Only people signed in to the Hub (Entra ID
+  token for the Hub's app registration) can call it. Pages are not stored.
+
+Parameters:
+  TenantId:
+    Type: String
+    Default: ea9e105c-2df6-47ef-a8e3-b4aa1d788423
+    Description: Entra tenant ID the Hub signs in to (Concept Group for the POC)
+  ClientId:
+    Type: String
+    Default: cfd8a964-d582-47e1-9174-ecd518cbc559
+    Description: Application (client) ID of the "DPM Document Management Hub" app registration
+  ModelId:
+    Type: String
+    Default: au.anthropic.claude-haiku-5-5
+    Description: Bedrock inference profile. au. keeps the pages in Australian regions.
+  AllowedOrigin:
+    Type: String
+    Default: https://marcusappdev.github.io
+    Description: The web address the Hub is served from (no trailing slash)
+
+Resources:
+  ReaderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: InvokeClaudeAU
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource:
+                  - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*
+                  - arn:aws:bedrock:ap-southeast-2::foundation-model/anthropic.*
+                  - arn:aws:bedrock:ap-southeast-4::foundation-model/anthropic.*
+                  - arn:aws:bedrock:ap-southeast-6::foundation-model/anthropic.*
+
+  ReaderLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-reader
+      RetentionInDays: 14
+
+  ReaderFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ReaderLogs
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-reader
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 90
+      MemorySize: 512
+      Role: !GetAtt ReaderRole.Arn
+      Environment:
+        Variables:
+          MODEL_ID: !Ref ModelId
+      Code:
+        ZipFile: |
+          import json, os, base64, boto3
+          br = boto3.client("bedrock-runtime")
+          MODEL = os.environ["MODEL_ID"]
+          SYSTEM = ("You read scanned payroll documents for the PNG Department of Personnel Management. "
+                    "Copy every value exactly as written on the page - never guess or calculate a value that "
+                    "is not written. Use null for anything blank, missing or unreadable and name such fields "
+                    "in 'unclear'. Dates as YYYY-MM-DD. Amounts as plain numbers (no K, no commas). "
+                    "Employee / file numbers keep their leading zeros and any letter.")
+          def reply(code, body):
+              return {"statusCode": code, "headers": {"Content-Type": "application/json"}, "body": json.dumps(body)}
+          def handler(event, context):
+              try:
+                  raw = event.get("body") or "{}"
+                  if event.get("isBase64Encoded"): raw = base64.b64decode(raw)
+                  req = json.loads(raw)
+                  img = base64.b64decode(req["image"])
+                  fmt = req.get("format", "jpeg")
+                  if fmt not in ("jpeg", "png") or len(img) > 3_700_000:
+                      return reply(400, {"error": "The page image must be a JPEG or PNG under 3.7 MB"})
+                  schema = req["schema"]
+                  text = str(req.get("instructions") or "Read this page.")[:8000]
+                  res = br.converse(
+                      modelId=MODEL,
+                      system=[{"text": SYSTEM}],
+                      messages=[{"role": "user", "content": [
+                          {"image": {"format": fmt, "source": {"bytes": img}}}, {"text": text}]}],
+                      toolConfig={"tools": [{"toolSpec": {"name": "record_fields",
+                                  "description": "Record the values read from the page",
+                                  "inputSchema": {"json": schema}}}],
+                                  "toolChoice": {"tool": {"name": "record_fields"}}},
+                      inferenceConfig={"maxTokens": 6000, "temperature": 0})
+                  fields = next((c["toolUse"]["input"] for c in res["output"]["message"]["content"] if "toolUse" in c), None)
+                  u = res.get("usage", {})
+                  print(json.dumps({"read": True, "in": u.get("inputTokens"), "out": u.get("outputTokens")}))
+                  return reply(200, {"fields": fields, "model": MODEL,
+                                     "usage": {"input": u.get("inputTokens"), "output": u.get("outputTokens")}})
+              except KeyError as e:
+                  return reply(400, {"error": f"missing {e}"})
+              except Exception as e:
+                  print("ERROR", type(e).__name__, str(e)[:500])
+                  return reply(500, {"error": f"{type(e).__name__}: {str(e)[:300]}"})
+
+  ReaderApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub ${AWS::StackName}-api
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: [ !Ref AllowedOrigin ]
+        AllowMethods: [ POST, OPTIONS ]
+        AllowHeaders: [ authorization, content-type ]
+        MaxAge: 3600
+
+  ReaderAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref ReaderApi
+      Name: EntraIdToken
+      AuthorizerType: JWT
+      IdentitySource: [ $request.header.Authorization ]
+      JwtConfiguration:
+        Audience: [ !Ref ClientId ]
+        Issuer: !Sub https://login.microsoftonline.com/${TenantId}/v2.0
+
+  ReaderIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ReaderApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ReaderFunction.Arn
+      PayloadFormatVersion: "2.0"
+      TimeoutInMillis: 30000
+
+  ReaderRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ReaderApi
+      RouteKey: POST /read
+      AuthorizationType: JWT
+      AuthorizerId: !Ref ReaderAuthorizer
+      Target: !Sub integrations/${ReaderIntegration}
+
+  ReaderStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref ReaderApi
+      StageName: $default
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 10
+        ThrottlingRateLimit: 3
+
+  ReaderPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ReaderFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ReaderApi}/*/*/read
+
+Outputs:
+  ReadUrl:
+    Description: Put this in the Hub's AwsApiUrl setting
+    Value: !Sub https://${ReaderApi}.execute-api.${AWS::Region}.amazonaws.com/read
