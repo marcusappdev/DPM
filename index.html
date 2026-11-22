@@ -204,9 +204,11 @@ async function loadAll(){
 
 /* ---------------- agencies, transaction types ---------------- */
 const lines = txt => String(txt || "").split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+// "Lands & Physical Planning", "Lands and Physical Planning." and "LANDS AND PHYSICAL PLANNING" all match
+const agKey = v => norm(v).replace(/&/g, " and ").replace(/^(the|dept\.?|department) of /, "").replace(/[^a-z0-9]+/g, "");
 function matchAgency(name){
-  const n = norm(name); if (!n) return null;
-  return S.agencies.find(a => norm(a.Title) === n || lines(a.Aliases).some(x => norm(x) === n)) || null;
+  const n = agKey(name); if (!n) return null;
+  return S.agencies.find(a => agKey(a.Title) === n || lines(a.Aliases).some(x => agKey(x) === n)) || null;
 }
 const ttype = t => S.ttypes.find(x => x.Title === t);
 function weekEnding(d){
@@ -980,8 +982,10 @@ function readSchema(){
       lines:{ type:"array", items: obj({ employeeNo:sS(), employeeName:sS(), natureOfClaim:sS("e.g. Deceased, Resignation"), paymentCategory:sS("e.g. MILOL, MILOL + MILOF"),
         periodFrom:sS(), periodTo:sS(), periodAsWritten:sS(), fortnights:sN(), gross:sN(), tax:sN(), net:sN(), taxRateStatedPct:sN("tax % written in the remarks, e.g. Marginal Tax @ 40% -> 40"),
         remarks:sS(), markedPaid:sB("true if 'Paid' has been handwritten or ticked against this employee") }) } }),
-    paymentForm: obj({ employeeNo:sS("Employee Selection #"), employeeName:sS(), department:sS(), reason:sS(), periodEndDate:sS(),
-      payLines:{ type:"array", items: obj({ date:sS(), payCode:sS(), units:sN(), rate:sN(), amount:sN() }) },
+    paymentForm: obj({ employeeNo:sS("Employee Selection #: written ONE character per box, normally 8 boxes - read each box separately, left to right, and keep leading zeros"),
+      employeeNumberBoxes:{ type:["array","null"], items:{ type:"string" }, description:"the Employee Selection # box by box, one character per item, exactly as written" },
+      employeeName:sS("Surname & Other Name, letter by letter as written"), department:sS(), reason:sS(), periodEndDate:sS("from the Period End Date boxes (day, month, year)"),
+      payLines:{ type:"array", items: obj({ date:sS(), payCode:sS("e.g. AGR35, AGR40, TAX - compare with the known pay codes"), units:sN(), rate:sN("the Rate column, read on its own"), amount:sN("the Amount column, read on its own - do not copy it from Rate") }) },
       preparedBy:sS(), preparedDate:sS(), checkedBy:sS(), checkedDate:sS(), markedPaid:sB("true if 'Paid' is handwritten on the form") }),
     calculation: obj({ employeeNo:sS(), employeeName:sS(), totalGross:sN(), tax:sN(), net:sN(), periodAsWritten:sS() }),
     unclear:{ type:"array", items:{ type:"string" }, description:"fields that were blank, crossed out or hard to read" }
@@ -997,6 +1001,13 @@ Fill ONLY the section for that kind of document and leave the other sections out
 - Gratuity, Higher Duties or Final Entitlements calculation sheet -> calculation (the employee's final totals)
 - Agency Schedule or anything else -> only documentType
 If a summary page shows both an agency claim table and a DPM validated table, use the DPM validated figures for the lines and put the agency's claimed total gross in agencyClaimedGross.
+Reading handwriting carefully:
+- Boxed numbers (Employee Selection #, dates, pay run) are written one character per box. Read every box on its own, left to right. Employee numbers are normally 8 characters, the last one sometimes a letter; never drop or merge a box.
+- Each digit of an amount matters. On the pink form the Rate and the Amount columns usually repeat the same figure - read each column separately; if they disagree, report both as read and name the line in "unclear".
+- Pay codes the Hub knows: ${S.paycodes.map(p => p.Title).join(", ")}. A handwritten code is almost always one of these (e.g. 3 and 2 look alike in AGR35).
+- Dates on these forms are written day / month / year (PNG). Return them as YYYY-MM-DD, with the month in the middle.
+- Copy names letter by letter as written; don't correct spelling.
+- "unclear" is only for something WRITTEN that is hard to read. Don't list boxes that are simply blank.
 Agencies the Hub knows: ${S.agencies.map(a => a.Title).join("; ")}.
 ${extra}`.trim();
 }
@@ -1017,8 +1028,13 @@ function toDate(v, notes, what){
   let s = String(v).trim(), m;
   if ((m = /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/.exec(s))) s = `${m[3].length === 2 ? "20" + m[3] : m[3]}-${pad(m[2])}-${pad(m[1])}`;
   if (isRealDate(s)) return s;
+  if ((m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)) && isRealDate(`${m[1]}-${m[3]}-${m[2]}`)){
+    notes.push(`${what}: read as "${v}" - taken as ${fmtDate(`${m[1]}-${m[3]}-${m[2]}`)} (day and month swapped); check it`);
+    return `${m[1]}-${m[3]}-${m[2]}`;
+  }
   notes.push(`${what}: "${v}" isn't a real date - enter it by hand`); return null;
 }
+const same = (a, b) => norm(a).replace(/[^a-z0-9]/g, "") === norm(b).replace(/[^a-z0-9]/g, "");
 function matchTType(v){ const n = norm(v); if (!n) return null; const t = S.ttypes.find(x => norm(x.Title) === n || lines(x.Aliases).some(a => norm(a) === n) || n.includes(norm(x.Title))); return t ? t.Title : null; }
 function applyRead(pg, f){
   const notes = [], P = `Page ${pg.n}`;
@@ -1027,7 +1043,8 @@ function applyRead(pg, f){
     if (v == null || v === "") return;
     const cur = ed.b[k];
     if (cur == null || String(cur).trim() === ""){ ed.b[k] = v; ed.auto.add(k); }
-    else if (norm(cur) !== norm(v) && !(typeof v === "number" && Math.abs(num(cur) - v) < 0.005)) notes.push(`${P}: ${FIELD_LABEL(k)} on the page is "${v}", the form has "${cur}" - kept the form's value`);
+    else if (same(cur, v)) return;
+    else if (!(typeof v === "number" && Math.abs(num(cur) - v) < 0.005)) notes.push(`${P}: ${FIELD_LABEL(k)} on the page is "${v}", the form has "${cur}" - kept the form's value`);
   };
   const setAgency = v => { if (!v) return; const a = matchAgency(v); setB("AgencyName", a ? a.Title : String(v).trim()); if (!a) notes.push(`${P}: agency "${v}" isn't in the Agencies list`); };
   const lineFor = (emp, name) => {
@@ -1069,16 +1086,33 @@ function applyRead(pg, f){
     });
   }
   if (pf && pg.type === "Special Offline Payment Form"){
-    const l = lineFor(pf.employeeNo, pf.employeeName);
-    setL(l, "EmployeeNo", pf.employeeNo ? empKey(pf.employeeNo) : null); setL(l, "EmployeeName", pf.employeeName);
+    // The box-by-box reading is the more careful one; use it when it gives a full number
+    const boxes = (pf.employeeNumberBoxes || []).map(x => String(x ?? "").trim()).filter(Boolean).join("");
+    let empNo = pf.employeeNo ? empKey(pf.employeeNo) : "";
+    if (boxes && empKey(boxes) !== empNo){
+      if (boxes.length === 8 || !empNo){ if (empNo) notes.push(`${P}: employee number read as ${empNo} and box by box as ${empKey(boxes)} - used ${empKey(boxes)}; check it`); empNo = empKey(boxes); }
+      else notes.push(`${P}: employee number read as ${empNo}, box by box as ${empKey(boxes)} - check it`);
+    }
+    const l = lineFor(empNo, pf.employeeName);
+    setL(l, "EmployeeNo", empNo || null); setL(l, "EmployeeName", pf.employeeName);
     const pl = (pf.payLines || []).filter(x => x.amount != null);
+    // The pink form writes each figure twice (Rate and Amount): if they disagree, a digit was misread
+    let consistent = true;
+    pl.forEach(x => {
+      if (x.rate != null && x.amount != null){
+        const expect = r2(num(x.rate) * (x.units == null ? 1 : num(x.units)));
+        if (Math.abs(expect - num(x.amount)) > 0.01){ consistent = false; notes.push(`${P}: ${x.payCode || "pay line"} - Rate × Units is ${kina(expect)} but Amount was read as ${kina(x.amount)}. Check the figure on the form.`); }
+      }
+      const known = S.paycodes.map(p => p.Title.toUpperCase()), code = String(x.payCode || "").toUpperCase().replace(/\s+/g, "");
+      if (code && known.length && !known.includes(code)) notes.push(`${P}: pay code "${x.payCode}" isn't one the Hub knows (${known.join(", ")}) - check it`);
+    });
     const gross = r2(pl.filter(x => !/^tax$/i.test(String(x.payCode || "").trim())).reduce((a, x) => a + num(x.amount), 0));
     const tax = r2(pl.filter(x => /^tax$/i.test(String(x.payCode || "").trim())).reduce((a, x) => a + num(x.amount), 0));
     const code = (pl.find(x => !/^tax$/i.test(String(x.payCode || "").trim())) || {}).payCode;
     const tol = num(setting("AmountTolerance", "0")) + 0.005;
-    if (String(l.Gross ?? "") === "" && gross > 0){ setL(l, "Gross", gross); setL(l, "Tax", tax); setL(l, "Net", r2(gross - tax)); setL(l, "PinkFormMatched", "Yes"); }
+    if (String(l.Gross ?? "") === "" && gross > 0){ setL(l, "Gross", gross); setL(l, "Tax", tax); setL(l, "Net", r2(gross - tax)); if (consistent) setL(l, "PinkFormMatched", "Yes"); }
     else if (gross > 0){
-      if (Math.abs(num(l.Gross) - gross) <= tol && Math.abs(num(l.Tax) - tax) <= tol) setL(l, "PinkFormMatched", "Yes");
+      if (Math.abs(num(l.Gross) - gross) <= tol && Math.abs(num(l.Tax) - tax) <= tol){ if (consistent) setL(l, "PinkFormMatched", "Yes"); }
       else notes.push(`${P}: pink form for ${pf.employeeName || pf.employeeNo} shows gross ${kina(gross)}, tax ${kina(tax)} - the summary line has ${kina(l.Gross)}, ${kina(l.Tax)}. Not matched.`);
     }
     setL(l, "PayCode", code); setL(l, "Reason", pf.reason); setL(l, "PeriodEndDate", toDate(pf.periodEndDate, notes, `${P} period end date`));
