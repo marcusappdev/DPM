@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f2a44'/%3E%3Ctext x='16' y='21' font-size='11' font-family='Arial' font-weight='700' text-anchor='middle' fill='%23c8962e'%3EDPM%3C/text%3E%3C/svg%3E">
+<title>DPM Document Management Hub</title>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
+<link rel="stylesheet" href="shared/dpm.css?v=20261122">
+<style>
+/* DPM Hub only - shared look is in shared/dpm.css */
+.logo .mark{background:var(--accent);color:var(--brand);border-radius:7px;padding:3px 8px;font-weight:800;letter-spacing:.5px}
+.logo small{display:block;font-weight:400;font-size:11px;color:#c9d1db;letter-spacing:.2px}
+header .rolesel{background:#1d3550;color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:4px 6px;font-size:12px}
+.sec{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--sc,var(--accent));border-radius:var(--r);padding:14px 16px;margin-bottom:16px;box-shadow:var(--shadow)}
+.sec > h3{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:.4px;color:var(--sc,var(--accent))}
+.sec.s-ctl{--sc:#1d4e89}.sec.s-sum{--sc:#0f8a80}.sec.s-lines{--sc:#7c3aed}.sec.s-docs{--sc:#b45309}.sec.s-chk{--sc:#b91c1c}.sec.s-hist{--sc:#64748b}
+@media (prefers-color-scheme:dark){.sec.s-ctl{--sc:#6f9bf5}.sec.s-sum{--sc:#3cc2b6}.sec.s-lines{--sc:#a98bf5}.sec.s-docs{--sc:#eaa24f}.sec.s-chk{--sc:#f87171}.sec.s-hist{--sc:#98a2b0}}
+.edhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.edhead h2{font-size:20px}
+.edhead .sub{color:var(--muted);font-size:13px}
+.actions{position:sticky;bottom:0;z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;box-shadow:0 -4px 12px rgba(16,24,40,.08)}
+.actions .grow{flex:1}
+.lines{min-width:1680px}
+.lines th{cursor:default;padding:7px 6px}
+.lines td{padding:4px 4px;vertical-align:middle}
+.lines tbody tr{cursor:default}
+.lines tbody tr:hover{background:transparent}
+.lines input,.lines select{width:100%;border:1px solid var(--line);border-radius:6px;padding:5px 6px;background:var(--surface2);font-size:13px;min-width:0}
+.lines input[type=checkbox]{width:auto}
+.lines input.n{text-align:right;font-variant-numeric:tabular-nums;min-width:62px}
+.lines input.n.m{min-width:104px}
+.lines tr.bad td:first-child{box-shadow:inset 4px 0 0 var(--crit)}
+.lines tr.bad input.e{border-color:var(--crit);background:var(--bad-bg)}
+.lines tfoot td{font-weight:650;padding:8px 6px;border-top:2px solid var(--line);font-variant-numeric:tabular-nums;text-align:right}
+.lines .rn{color:var(--muted);text-align:center;font-size:12px}
+.lines .x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:16px}
+.chk{list-style:none;margin:0;padding:0}
+.chk li{display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px;align-items:baseline}
+.chk li:last-child{border:0}
+.chk .tag{flex:none;font-size:11px;font-weight:700;border-radius:5px;padding:1px 7px;text-transform:uppercase}
+.chk .e .tag{background:var(--bad-bg);color:var(--crit)}
+.chk .w .tag{background:var(--warn-bg);color:var(--warn)}
+.chk .rule{font-weight:600}
+.okline{color:var(--ok);font-weight:600}
+.docs td{vertical-align:middle}
+.upl{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:12px}
+.upl label.fld{min-width:190px}
+.hist li{cursor:default}
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.note{font-size:12px;color:var(--muted)}
+.rowsum td{font-weight:650;background:var(--surface2)}
+.readonly input,.readonly select,.readonly textarea{pointer-events:none;background:var(--grey-bg)!important}
+.kpi.k-b{--kc:#1d4e89}.kpi.k-p{--kc:#b45309}.kpi.k-a{--kc:#15803d}.kpi.k-r{--kc:#b91c1c}.kpi.k-h{--kc:#7c3aed}.kpi.k-g{--kc:#0f8a80}.kpi.k-s{--kc:#c8962e}
+.kpi .v.sm{font-size:22px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><span class="mark">DPM</span><div>Document Management Hub<small id="orgname"></small></div></div>
+  <nav id="nav" hidden>
+    <button data-v="dash">Dashboard</button>
+    <button data-v="batches">Batches</button>
+    <button data-v="register">Register</button>
+    <button data-v="ref">Agencies &amp; codes</button>
+    <button data-v="settings">Settings</button>
+  </nav>
+  <div class="who" id="who"></div>
+</header>
+<main id="main"><div class="empty">Loading…</div></main>
+<dialog id="dlg"></dialog>
+<div id="toast" class="toast" role="status"></div>
+
+<script src="shared/dpm-config.js?v=20261122"></script>
+<script src="shared/dpm-core.js?v=20261122"></script>
+<script>
+/* =====================================================================
+   DPM Document Management Hub  v1.0
+   Registers batches of payroll documents submitted by government agencies:
+   Batch Control Form + DPM Validated Summary + one Special Offline Payment
+   Form per employee. Checks every entry, rejects the whole batch if any form
+   fails, keeps the scans in SharePoint with their details, and shows a dashboard.
+   While CLIENT_ID in shared/dpm-config.js is the placeholder, the app runs in
+   DEMO mode with made-up data held in the browser only.
+   ===================================================================== */
+const CONFIG = { ...DPM_TENANT, SCOPES:["Sites.ReadWrite.All","User.Read"],
+  LISTS: dpmLists({ agencies:"Agencies", ttypes:"TransactionTypes", paycodes:"PayCodes", doctypes:"DocumentTypes",
+    users:"Users", settings:"Settings", numbers:"Numbers", batches:"Batches", lines:"PaymentLines", events:"BatchEvents", docs:"BatchDocuments" }) };
+const L = CONFIG.LISTS;
+const DEMO = String(CONFIG.CLIENT_ID).startsWith("<<");
+
+const FORM_TYPES = ["New and Amended Employee Information","Employee Salary / Permanent Variation Advice","Employee Salary Allowances / Permanent Variation Advice","Employee Salary Deductions / Permanent Variation Advice","Employee Salary Tax / Permanent Variation Advice","Employee Salary Disbursement / Permanent Variation Advice","Employee Overtime / Shift Temporary Variation Advice","Request for Higher Duties Allowance","Leave Application","Returned from Leave","Offline Payment (Normal Pay)","Offline Payment (Special Pay)","Termination Advice"];
+const NATURES = ["Deceased","Resignation","Retirement","Retrenchment","Termination","Dismissal","Contract completion","Not applicable"];
+const DOC_TYPES = ["Batch Control Form","DPM Validated Summary","Special Offline Payment Form","Gratuity Calculation","Higher Duties Calculation","Final Entitlements Calculation","Agency Schedule","Other Supporting Document"];
+const ROLES = ["Data Entry","Checker","Manager (read only)","Admin"];
+const STATUS_PILL = { "Draft":"p-grey", "Submitted for check":"p-info", "Verified":"p-info", "Accepted":"p-ok", "Rejected":"p-crit", "Returned to agency":"p-warn", "Superseded":"p-grey" };
+const LINE_PILL = { "Pending":"p-grey", "OK":"p-ok", "Query":"p-warn", "Held - marked paid":"p-warn", "Rejected":"p-crit" };
+
+let S = { settings:{}, settingRows:[], agencies:[], ttypes:[], paycodes:[], doctypes:[], users:[], numbers:[], batches:[], lines:[], events:[], docs:[] };
+let me = { name:"", email:"", role:"Manager (read only)", note:"" };
+let view = "dash", ed = null, docDrive = null;
+const F = { b:{ q:"", status:"", week:"" }, r:{ q:"", agency:"", tt:"", status:"", week:"" }, d:{ week:"", agency:"" }, ref:"agencies" };
+
+/* ---------------- settings, roles ---------------- */
+const setting = (k, def = "") => { const v = S.settings[k]; return v == null || v === "" ? def : String(v); };
+const canEnter = () => ["Data Entry","Checker","Admin"].includes(me.role);
+const canCheck = () => ["Checker","Admin"].includes(me.role);
+const isAdmin  = () => me.role === "Admin";
+function resolveMe(){
+  if (DEMO){ const names = { "Data Entry":"Demo Entry Officer", "Checker":"Demo Checker", "Manager (read only)":"Demo Manager", "Admin":"Demo User" };
+    me = { name: names[me.role] || "Demo User", email:"demo@example.com", role: me.role, note:"" }; return; }
+  const email = String(account?.username || "").toLowerCase();
+  me.name = account?.name || email; me.email = email;
+  if (!S.users.length){ me.role = "Admin"; me.note = `No one is in ${L.users} yet, so everyone is treated as Admin. Add people and their Hub Role to the list.`; return; }
+  const u = S.users.find(x => String(x.UserEmail || "").toLowerCase() === email && x.UserActive !== "No");
+  if (u){ me.role = u.HubRole || "Manager (read only)"; me.name = u.Title || me.name; me.note = ""; }
+  else { me.role = "Manager (read only)"; me.note = `You're not in ${L.users}, so the Hub is read-only for you. Ask an Admin to add you.`; }
+}
+
+/* ---------------- loading ---------------- */
+async function loadAll(){
+  if (DEMO){ S = demoData(); return; }
+  await getSite();
+  const keys = ["settings","agencies","ttypes","paycodes","doctypes","users","numbers","batches","lines","events"];
+  const res = await Promise.all(keys.map(k => listItems(L[k]).catch(e => { e.list = L[k]; throw e; })));
+  keys.forEach((k, i) => { if (k === "settings") S.settingRows = res[i]; else S[k] = res[i]; });
+  S.settings = Object.fromEntries(S.settingRows.map(r => [r.Title, r.SettingValue ?? ""]));
+}
+
+/* ---------------- agencies, transaction types ---------------- */
+const lines = txt => String(txt || "").split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+function matchAgency(name){
+  const n = norm(name); if (!n) return null;
+  return S.agencies.find(a => norm(a.Title) === n || lines(a.Aliases).some(x => norm(x) === n)) || null;
+}
+const ttype = t => S.ttypes.find(x => x.Title === t);
+function weekEnding(d){
+  if (!isRealDate(d)) return "";
+  const names = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  const startIdx = Math.max(0, names.indexOf(setting("WeekStartsOn", "Monday")));
+  const [y,m,dd] = d.split("-").map(Number); const dow = new Date(y, m-1, dd).getDay();
+  const back = (dow - startIdx + 7) % 7;
+  return addDays(addDays(d, -back), 6);
+}
+
+/* =====================================================================
+   CHECKS - every rule a batch must pass before it can be accepted.
+   One error anywhere = the whole batch is rejected (setting RejectWholeBatch).
+   ===================================================================== */
+function checkBatch(b, ls, docs){
+  const out = [], E = (rule, msg, line) => out.push({ sev:"e", rule, msg, line }), W = (rule, msg, line) => out.push({ sev:"w", rule, msg, line });
+  const tol = num(setting("AmountTolerance", "0")) + 0.005, maxTax = num(setting("MaxTaxPct", "40"));
+  const req = [["AgencyName","Agency"],["PayNo","Pay No"],["PayDate","Pay Date"],["FormType","Type of Form"],["NumberOfForms","Number of Forms"],
+    ["RaisedBy","Batch Raised By"],["RaisedDate","Date Raised"],["ReceivedDate","Date Received"],["TransactionType","Transaction Type"],
+    ["SummaryPreparedBy","Summary Prepared By"],["SummaryPreparedDate","Summary Prepared Date"],["SummaryCheckedBy","Summary Checked By"],["SummaryCheckedDate","Summary Checked Date"]];
+  const miss = req.filter(([k]) => b[k] === undefined || b[k] === null || String(b[k]).trim() === "").map(([, l]) => l);
+  if (miss.length) E("Required fields", `Missing: ${miss.join(", ")}`);
+  if (b.AgencyName && !matchAgency(b.AgencyName)) W("Agency not in list", `"${b.AgencyName}" isn't in the Agencies list or its other names - check the spelling or add it`);
+  if (b.PayNo && !/^\d{1,2}\/\d{2}$/.test(String(b.PayNo).trim())) E("Pay No format", `Pay No "${b.PayNo}" should look like 23/26`);
+  ["PayDate","RaisedDate","ReceivedDate","PADate","SummaryPreparedDate","SummaryCheckedDate","SummaryValidatedDate","SummaryCertifiedDate"].forEach(k => {
+    if (b[k] && !isRealDate(b[k])) E("Invalid date", `${k.replace(/([A-Z])/g, " $1").trim()} "${b[k]}" isn't a real date`);
+  });
+  if (isRealDate(b.RaisedDate) && b.RaisedDate > TODAY) E("Date in the future", `Date Raised ${fmtDate(b.RaisedDate)} is after today`);
+  // sign-offs in date order: prepared <= checked <= validated <= certified
+  const order = [["Prepared","SummaryPreparedDate"],["Checked","SummaryCheckedDate"],["Validated","SummaryValidatedDate"],["Certified","SummaryCertifiedDate"]].filter(([, k]) => isRealDate(b[k]));
+  for (let i = 1; i < order.length; i++) if (b[order[i][1]] < b[order[i-1][1]])
+    E("Sign-off dates out of order", `${order[i][0]} ${fmtDate(b[order[i][1]])} is before ${order[i-1][0]} ${fmtDate(b[order[i-1][1]])}`);
+  if (!ls.length) E("No payment lines", "Add a line for each employee on the summary");
+  // totals written on the summary must equal the lines
+  const sum = k => r2(ls.reduce((a, l) => a + num(l[k]), 0));
+  [["TotalGross","Gross"],["TotalTax","Tax"],["TotalNet","Net"]].forEach(([k, f]) => {
+    if (b[k] !== "" && b[k] != null && Math.abs(num(b[k]) - sum(f)) > tol) E("Totals don't agree", `Summary total ${f.toLowerCase()} ${kina(b[k])} but the lines add up to ${kina(sum(f))}`);
+  });
+  const pinkReq = setting("RequirePinkFormPerLine", "Yes") === "Yes";
+  if (b.NumberOfForms !== "" && b.NumberOfForms != null && pinkReq && num(b.NumberOfForms) !== ls.length)
+    E("Number of forms", `Batch Control Form says ${b.NumberOfForms} form(s) but there are ${ls.length} payment line(s)`);
+  const tt = ttype(b.TransactionType);
+  const seen = {};
+  ls.forEach((l, i) => {
+    const who = `Line ${i+1}${l.EmployeeName ? " (" + l.EmployeeName + ")" : ""}`;
+    const emp = String(l.EmployeeNo || "").trim().toUpperCase();
+    if (!emp) E("Employee number", `${who}: employee / file number is missing`, i);
+    else if (!/^\d{7}[0-9A-Z]$/.test(emp)) E("Employee number", `${who}: "${emp}" should be 8 characters (e.g. 01539775 or 0136415A) - check for a dropped digit`, i);
+    if (!String(l.EmployeeName || "").trim()) E("Employee name", `${who}: name is missing`, i);
+    if (!(num(l.Gross) > 0)) E("Amounts", `${who}: gross must be more than zero`, i);
+    if (num(l.Gross) > 0 && Math.abs(num(l.Gross) - num(l.Tax) - num(l.Net)) > tol)
+      E("Net = gross - tax", `${who}: ${kina(l.Gross)} - ${kina(l.Tax)} = ${kina(num(l.Gross) - num(l.Tax))}, but net is ${kina(l.Net)}`, i);
+    const rate = num(l.Gross) > 0 ? num(l.Tax) / num(l.Gross) * 100 : 0;
+    if (rate > maxTax + 0.05) E(`Tax over ${maxTax}%`, `${who}: tax is ${rate.toFixed(1)}% of gross`, i);
+    if (l.StatedTaxPct !== "" && l.StatedTaxPct != null && num(l.Gross) > 0 && Math.abs(rate - num(l.StatedTaxPct)) > 0.5)
+      E("Tax rate differs from remarks", `${who}: remarks say ${l.StatedTaxPct}% but tax is ${rate.toFixed(1)}%`, i);
+    const hasPeriod = (l.PeriodFrom && l.PeriodTo) || String(l.PeriodText || "").trim();
+    if ((!tt || tt.NeedsPeriod !== "No") && !hasPeriod) E("Payment period", `${who}: payment period is missing`, i);
+    if (l.PeriodFrom && !isRealDate(l.PeriodFrom)) E("Invalid date", `${who}: Period From isn't a real date`, i);
+    if (l.PeriodTo && !isRealDate(l.PeriodTo)) E("Invalid date", `${who}: Period To isn't a real date`, i);
+    if (isRealDate(l.PeriodFrom) && isRealDate(l.PeriodTo) && l.PeriodTo < l.PeriodFrom) E("Payment period", `${who}: period ends before it starts`, i);
+    if (String(l.PeriodText || "").trim() && !(l.PeriodFrom && l.PeriodTo)) W("Period dates", `${who}: only the written period is entered - add From / To dates if the form gives them`, i);
+    if (tt && tt.NeedsNature === "Yes" && !l.NatureOfClaim) E("Nature of claim", `${who}: nature of claim is needed for ${b.TransactionType}`, i);
+    if (pinkReq && l.PinkFormMatched !== "Yes") E("Pink form", `${who}: no matching Special Offline Payment Form ticked`, i);
+    if (l.MarkedPaid) E("Marked paid - held", `${who}: a handwritten "Paid" note is on the form - hold and confirm it hasn't been paid already`, i);
+    // duplicates inside the batch
+    const k = emp + "|" + (l.PayCode || l.PaymentCategory || "");
+    if (emp && seen[k] != null) E("Duplicate in batch", `${who}: same employee and pay code as line ${seen[k]+1}`, i); else if (emp) seen[k] = i;
+    // duplicates and name mismatches elsewhere in the register
+    if (emp){
+      const others = S.lines.filter(x => String(x.EmployeeNo || "").toUpperCase() === emp && x.BatchRef !== b.Title);
+      const live = others.filter(x => { const ob = S.batches.find(y => y.Title === x.BatchRef); return ob && !["Rejected","Returned to agency","Superseded"].includes(ob.BatchStatus) && ob.Title !== b.ResubmissionOf; });
+      const dup = live.find(x => x.TransactionType === b.TransactionType &&
+        ((l.PeriodFrom && x.PeriodFrom === l.PeriodFrom && x.PeriodTo === l.PeriodTo) || (!l.PeriodFrom && norm(x.PeriodText) && norm(x.PeriodText) === norm(l.PeriodText))));
+      if (dup) E("Possible duplicate payment", `${who}: ${b.TransactionType} for the same period is already in batch ${dup.BatchRef} (${kina(dup.Net)} net)`, i);
+      const other = others.find(x => x.EmployeeName && l.EmployeeName && norm(x.EmployeeName) !== norm(l.EmployeeName));
+      if (other) W("Name differs", `${who}: employee ${emp} is "${other.EmployeeName}" in batch ${other.BatchRef} - check the number belongs to this person`, i);
+    }
+  });
+  if (docs){
+    const has = t => docs.some(d => d.DocumentType === t);
+    if (b.Title && !has("Batch Control Form")) W("Documents", "No scan of the Batch Control Form attached yet");
+    if (b.Title && !has("DPM Validated Summary")) W("Documents", "No scan of the DPM Validated Summary attached yet");
+  }
+  return out;
+}
+
+/* ---------------- header ---------------- */
+function renderWho(){
+  const w = $("#who");
+  const roleSel = DEMO ? `<select class="rolesel" id="demoRole" title="Demo: try the Hub as each role">${ROLES.map(r => `<option ${r === me.role ? "selected" : ""}>${esc(r)}</option>`).join("")}</select>` : `<span class="pill p-grey">${esc(me.role)}</span>`;
+  w.innerHTML = `${roleSel}<span>${esc(me.name)}</span>${DEMO ? "" : `<button id="so">Sign out</button>`}`;
+  $("#so")?.addEventListener("click", signOut);
+  $("#demoRole")?.addEventListener("change", e => { me.role = e.target.value; resolveMe(); renderWho(); if (ed) openBatch(ed.b.id || "new"); else render(); });
+  $("#orgname").textContent = BRAND.ORGANISATION;
+}
+$("#nav").addEventListener("click", e => { const b = e.target.closest("button[data-v]"); if (b) go(b.dataset.v); });
+function go(v){ location.hash = v; }
+window.addEventListener("hashchange", route);
+function route(){
+  const h = location.hash.slice(1) || "dash";
+  if (h.startsWith("batch/")){ const id = decodeURIComponent(h.slice(6)); openBatch(id); return; }
+  view = ["dash","batches","register","ref","settings"].includes(h) ? h : "dash"; ed = null; render();
+}
+function render(){
+  $$("#nav button").forEach(b => b.classList.toggle("on", b.dataset.v === view && !ed));
+  const banner = (DEMO ? `<div class="banner">Demo mode - made-up agencies' batches and people, kept in this browser only until you refresh. Put the Entra app's client ID in shared/dpm-config.js to connect to SharePoint. Use the role list at the top right to try each role.</div>` : "")
+    + (me.note ? `<div class="banner">${esc(me.note)}</div>` : "");
+  if (ed) return renderEditor(banner);
+  $("#main").innerHTML = banner + ({ dash:viewDash, batches:viewBatches, register:viewRegister, ref:viewRef, settings:viewSettings }[view])();
+  bindView();
+}
+
+/* ---------------- shared bits ---------------- */
+const pill = (s, map = STATUS_PILL) => s ? `<span class="pill ${map[s] || "p-grey"}">${esc(s)}</span>` : "";
+const batchLines = ref => S.lines.filter(l => l.BatchRef === ref);
+const sumOf = (arr, k) => r2(arr.reduce((a, x) => a + num(x[k]), 0));
+const weeks = () => [...new Set(S.batches.map(b => b.WeekEnding).filter(Boolean))].sort().reverse();
+const opt = (v, cur, label) => `<option value="${esc(v)}" ${String(v) === String(cur ?? "") ? "selected" : ""}>${esc(label ?? v)}</option>`;
+function csv(name, rows, cols){
+  const q = v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const text = [cols.map(c => q(c[1])).join(","), ...rows.map(r => cols.map(c => q(typeof c[0] === "function" ? c[0](r) : r[c[0]])).join(","))].join("\r\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + text], { type:"text/csv" })); a.download = name; a.click();
+}
+
+/* =====================================================================
+   DASHBOARD
+   ===================================================================== */
+function viewDash(){
+  const wk = F.d.week, ag = F.d.agency;
+  const bs = S.batches.filter(b => (!wk || b.WeekEnding === wk) && (!ag || b.AgencyName === ag));
+  const refs = new Set(bs.map(b => b.Title));
+  const ls = S.lines.filter(l => refs.has(l.BatchRef));
+  const acc = bs.filter(b => b.BatchStatus === "Accepted"), accRefs = new Set(acc.map(b => b.Title));
+  const accLines = ls.filter(l => accRefs.has(l.BatchRef));
+  const rej = bs.filter(b => ["Rejected","Returned to agency"].includes(b.BatchStatus));
+  const pend = bs.filter(b => b.BatchStatus === "Submitted for check");
+  const drafts = bs.filter(b => b.BatchStatus === "Draft");
+  const held = ls.filter(l => l.LineStatus === "Held - marked paid");
+  const decided = acc.length + rej.length;
+  const saving = r2(accLines.reduce((a, l) => a + (num(l.AgencyClaimedGross) > 0 ? num(l.AgencyClaimedGross) - num(l.Gross) : 0), 0));
+  const bars = (rows, total, colour) => rows.length ? rows.map(([k, v]) => `<div class="hb" style="grid-template-columns:minmax(120px,38%) 1fr 84px"><span title="${esc(k)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k)}</span><span class="t"><i style="width:${total ? Math.max(1, v / total * 100) : 0}%;background:${colour}"></i></span><span class="n">${kinaShort(v)}</span></div>`).join("") : `<div class="empty">Nothing accepted yet for this selection.</div>`;
+  const group = (arr, key) => { const m = {}; arr.forEach(l => { const k = l[key] || "(blank)"; m[k] = (m[k] || 0) + num(l.Gross); }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
+  const byAg = group(accLines, "AgencyName"), byTT = group(accLines, "TransactionType");
+  const reasons = {}; rej.forEach(b => lines(b.RejectionReasons).forEach(r => { const k = r.split(" - ")[0].replace(/^\[|\]$/g, ""); reasons[k] = (reasons[k] || 0) + 1; }));
+  const topReasons = Object.entries(reasons).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  // overspend: accepted offline payments this year against each agency's PE budget
+  const withBudget = S.agencies.filter(a => num(a.AnnualPEBudget) > 0);
+  const yearLines = S.lines.filter(l => { const b = S.batches.find(x => x.Title === l.BatchRef); return b && b.BatchStatus === "Accepted" && String(b.PayDate || "").startsWith(YEAR); });
+  const budgetRows = withBudget.map(a => { const spent = sumOf(yearLines.filter(l => l.AgencyName === a.Title), "Gross"); return [a.Title, spent, num(a.AnnualPEBudget)]; }).sort((x, y) => y[1]/y[2] - x[1]/x[2]);
+  return `<div class="bar"><h2>Dashboard</h2><span class="grow"></span>
+      <select class="f" id="dWeek"><option value="">All weeks</option>${weeks().map(w => opt(w, wk, "Week ending " + fmtDate(w))).join("")}</select>
+      <select class="f" id="dAg"><option value="">All agencies</option>${[...new Set(S.batches.map(b => b.AgencyName).filter(Boolean))].sort().map(a => opt(a, ag)).join("")}</select></div>
+    <div class="grid kpis dash">
+      <div class="card kpi k-b" data-go="batches|"><div class="l">Batches received</div><div class="v">${bs.length}</div><div class="s">${drafts.length} still in draft</div></div>
+      <div class="card kpi k-p" data-go="batches|Submitted for check"><div class="l">Awaiting check</div><div class="v">${pend.length}</div><div class="s">submitted, not decided</div></div>
+      <div class="card kpi k-a" data-go="batches|Accepted"><div class="l">Accepted</div><div class="v">${acc.length}</div><div class="s">${accLines.length} payment line(s)</div></div>
+      <div class="card kpi k-r ${rej.length ? "alert" : ""}" data-go="batches|Rejected"><div class="l">Rejected</div><div class="v">${rej.length}</div><div class="s">${decided ? Math.round(rej.length / decided * 100) + "% of decided" : "none decided yet"}</div></div>
+      <div class="card kpi k-h ${held.length ? "alert" : ""}" data-go="register|Held - marked paid"><div class="l">Lines held</div><div class="v">${held.length}</div><div class="s">marked "Paid" by hand</div></div>
+      <div class="card kpi k-g"><div class="l">Accepted gross</div><div class="v sm">${kinaShort(sumOf(accLines, "Gross"))}</div><div class="s">net ${kinaShort(sumOf(accLines, "Net"))}</div></div>
+      <div class="card kpi k-s"><div class="l">Saved by validation</div><div class="v sm">${kinaShort(saving)}</div><div class="s">agency claims less DPM figures</div></div>
+    </div>
+    <div class="grid two">
+      <div class="card"><h3>Accepted gross by agency</h3>${bars(byAg.slice(0, 12), byAg[0]?.[1], "#1d4e89")}</div>
+      <div class="card"><h3>Accepted gross by transaction type</h3>${bars(byTT, byTT[0]?.[1], "#0f8a80")}</div>
+      <div class="card"><h3>Why batches were rejected</h3>${topReasons.length ? topReasons.map(([k, v]) => `<div class="hb" style="grid-template-columns:minmax(120px,50%) 1fr 40px"><span>${esc(k)}</span><span class="t"><i style="width:${v / topReasons[0][1] * 100}%;background:#b91c1c"></i></span><span class="n">${v}</span></div>`).join("") : `<div class="empty">No rejected batches for this selection.</div>`}</div>
+      <div class="card"><h3>Offline payments against PE budget (${YEAR})</h3>${budgetRows.length ? budgetRows.map(([k, s, bud]) => { const p = s / bud * 100; return `<div class="hb" style="grid-template-columns:minmax(120px,38%) 1fr 64px"><span title="${esc(k)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k)}</span><span class="t"><i style="width:${Math.min(100, p)}%;background:${p > 100 ? "#b91c1c" : p > 80 ? "#b45309" : "#15803d"}"></i></span><span class="n">${p.toFixed(1)}%</span></div>`; }).join("") : `<div class="empty">No agency budgets yet. When a budget source is available, enter each agency's Annual PE Budget under Agencies &amp; codes and this shows the overspend.</div>`}</div>
+    </div>`;
+}
+
+/* =====================================================================
+   BATCHES
+   ===================================================================== */
+function viewBatches(){
+  const f = F.b, q = norm(f.q);
+  const rows = S.batches.filter(b => (!f.status || b.BatchStatus === f.status) && (!f.week || b.WeekEnding === f.week) &&
+    (!q || [b.Title, b.AgencyName, b.PayNo, b.BatchNumber, b.TransactionType].some(v => norm(v).includes(q))))
+    .sort((a, b) => String(b.ReceivedDate || "").localeCompare(String(a.ReceivedDate || "")) || String(b.Title).localeCompare(String(a.Title)));
+  const counts = s => S.batches.filter(b => b.BatchStatus === s).length;
+  const chips = ["", "Draft","Submitted for check","Accepted","Rejected","Returned to agency"].map(s => `<button class="chip ${f.status === s ? "on" : ""}" data-bs="${esc(s)}">${s || "All"}<span>${s ? counts(s) : S.batches.length}</span></button>`).join("");
+  return `<div class="bar"><h2>Batches</h2><span class="grow"></span>
+      <input type="search" id="bQ" placeholder="Search ref, agency, pay no…" value="${esc(f.q)}">
+      <select class="f" id="bWeek"><option value="">All weeks</option>${weeks().map(w => opt(w, f.week, "Week ending " + fmtDate(w))).join("")}</select>
+      ${canEnter() ? `<button class="btn primary" id="newB">+ New batch</button>` : ""}</div>
+    <div class="bar chips">${chips}</div>
+    <div class="tablewrap"><table><thead><tr><th>Batch Ref</th><th>Agency</th><th>Pay No</th><th>Pay Date</th><th>Transaction</th><th>Lines</th><th>Gross</th><th>Net</th><th>Status</th><th>Received</th><th>Entered by</th></tr></thead>
+    <tbody>${rows.map(b => { const ls = batchLines(b.Title); return `<tr data-open="${esc(b.id)}"><td class="mono"><b>${esc(b.Title)}</b></td><td>${esc(b.AgencyName)}</td><td class="mono">${esc(b.PayNo)}</td><td class="mono">${fmtDate(b.PayDate)}</td><td>${esc(b.TransactionType)}</td><td class="mono">${ls.length}</td><td class="mono">${kina(sumOf(ls, "Gross"))}</td><td class="mono">${kina(sumOf(ls, "Net"))}</td><td>${pill(b.BatchStatus)}</td><td class="mono">${fmtDate(b.ReceivedDate)}</td><td>${esc(b.EnteredBy)}</td></tr>`; }).join("") || `<tr><td colspan="11" class="empty">No batches match.</td></tr>`}</tbody></table></div>
+    <p class="count">${rows.length} batch(es)</p>`;
+}
+
+/* =====================================================================
+   REGISTER - every payment line (replaces the weekly spreadsheet)
+   ===================================================================== */
+function registerRows(){
+  const f = F.r, q = norm(f.q);
+  return S.lines.map(l => ({ ...l, _b: S.batches.find(b => b.Title === l.BatchRef) || {} }))
+    .filter(l => (!f.agency || l.AgencyName === f.agency) && (!f.tt || l.TransactionType === f.tt) && (!f.status || l.LineStatus === f.status) &&
+      (!f.week || l._b.WeekEnding === f.week) && (!q || [l.EmployeeNo, l.EmployeeName, l.BatchRef, l.Title].some(v => norm(v).includes(q))))
+    .sort((a, b) => String(b.BatchRef).localeCompare(String(a.BatchRef)) || String(a.Title).localeCompare(String(b.Title)));
+}
+const REG_COLS = [["BatchRef","Batch Ref"],["AgencyName","Agency"],["TransactionType","Transaction Type"],["EmployeeNo","Employee / File No"],["EmployeeName","Employee Name"],
+  ["NatureOfClaim","Nature of Claim"],["PayCode","Pay Code"],[l => l.PeriodFrom ? `${fmtDate(l.PeriodFrom)} to ${fmtDate(l.PeriodTo)}` : l.PeriodText, "Period"],
+  ["Gross","Gross"],["Tax","Tax"],["Net","Net"],["PayNo","Pay No"],[l => l._b.BatchStatus, "Batch Status"],["LineStatus","Line Status"],[l => l._b.WeekEnding, "Week Ending"]];
+function viewRegister(){
+  const f = F.r, rows = registerRows();
+  const ags = [...new Set(S.lines.map(l => l.AgencyName).filter(Boolean))].sort(), tts = [...new Set(S.lines.map(l => l.TransactionType).filter(Boolean))].sort();
+  return `<div class="bar"><h2>Register</h2><span class="grow"></span>
+      <input type="search" id="rQ" placeholder="Employee no, name or batch…" value="${esc(f.q)}">
+      <select class="f" id="rAg"><option value="">All agencies</option>${ags.map(a => opt(a, f.agency)).join("")}</select>
+      <select class="f" id="rTT"><option value="">All transaction types</option>${tts.map(a => opt(a, f.tt)).join("")}</select>
+      <select class="f" id="rSt"><option value="">All line statuses</option>${Object.keys(LINE_PILL).map(a => opt(a, f.status)).join("")}</select>
+      <select class="f" id="rWk"><option value="">All weeks</option>${weeks().map(w => opt(w, f.week, "Week ending " + fmtDate(w))).join("")}</select>
+      <button class="btn" id="rCsv">Export CSV</button></div>
+    <div class="tablewrap"><table><thead><tr><th>Batch</th><th>Agency</th><th>Transaction</th><th>Emp / File No</th><th>Name</th><th>Period</th><th>Gross</th><th>Tax</th><th>Net</th><th>Line</th><th>Batch</th></tr></thead>
+    <tbody>${rows.slice(0, 1000).map(l => `<tr data-openref="${esc(l.BatchRef)}"><td class="mono">${esc(l.BatchRef)}</td><td>${esc(l.AgencyName)}</td><td>${esc(l.TransactionType)}${l.NatureOfClaim ? `<div class="note">${esc(l.NatureOfClaim)}${l.PaymentCategory ? " · " + esc(l.PaymentCategory) : ""}</div>` : ""}</td>
+      <td class="mono">${esc(l.EmployeeNo)}</td><td>${esc(l.EmployeeName)}</td><td class="mono">${l.PeriodFrom ? fmtDate(l.PeriodFrom) + " – " + fmtDate(l.PeriodTo) : esc(l.PeriodText)}</td>
+      <td class="mono">${kina(l.Gross)}</td><td class="mono">${kina(l.Tax)}</td><td class="mono">${kina(l.Net)}</td><td>${pill(l.LineStatus, LINE_PILL)}</td><td>${pill(l._b.BatchStatus)}</td></tr>`).join("") || `<tr><td colspan="11" class="empty">No payment lines match.</td></tr>`}
+    ${rows.length ? `<tr class="rowsum"><td colspan="6">${rows.length} line(s)${rows.length > 1000 ? " - first 1,000 shown; export for all" : ""}</td><td class="mono">${kina(sumOf(rows, "Gross"))}</td><td class="mono">${kina(sumOf(rows, "Tax"))}</td><td class="mono">${kina(sumOf(rows, "Net"))}</td><td colspan="2"></td></tr>` : ""}</tbody></table></div>`;
+}
+
+/* =====================================================================
+   AGENCIES & CODES
+   ===================================================================== */
+function viewRef(){
+  const t = F.ref;
+  const tabs = [["agencies","Agencies"],["ttypes","Transaction types"],["paycodes","Pay codes"],["doctypes","Document templates"]].map(([k, l]) => `<button class="chip ${t === k ? "on" : ""}" data-ref="${k}">${l}<span>${S[k].length}</span></button>`).join("");
+  let body = "";
+  if (t === "agencies") body = `<div class="tablewrap"><table><thead><tr><th>Agency</th><th>Type</th><th>Province</th><th>DPM Region</th><th>Other names</th><th>PE Budget</th><th>Active</th></tr></thead><tbody>
+    ${[...S.agencies].sort((a, b) => String(a.Title).localeCompare(b.Title)).map(a => `<tr data-ag="${esc(a.id)}"><td><b>${esc(a.Title)}</b></td><td>${esc(a.AgencyType)}</td><td>${esc(a.Province)}</td><td>${esc(a.DPMRegion)}</td><td class="clip"><div>${esc(lines(a.Aliases).join("; "))}</div></td><td class="mono">${num(a.AnnualPEBudget) ? kina(a.AnnualPEBudget) : ""}</td><td>${esc(a.AgencyActive)}</td></tr>`).join("")}</tbody></table></div>`;
+  if (t === "ttypes") body = `<div class="tablewrap"><table><thead><tr><th>Transaction type</th><th>Other names</th><th>Period required</th><th>Nature required</th><th>Active</th></tr></thead><tbody>
+    ${S.ttypes.map(a => `<tr><td><b>${esc(a.Title)}</b></td><td class="clip"><div>${esc(lines(a.Aliases).join("; "))}</div></td><td>${esc(a.NeedsPeriod)}</td><td>${esc(a.NeedsNature)}</td><td>${esc(a.TTActive)}</td></tr>`).join("")}</tbody></table></div>`;
+  if (t === "paycodes") body = `<div class="tablewrap"><table><thead><tr><th>Pay code</th><th>Description</th><th>Usual transaction</th><th>Tax</th><th>Notes</th></tr></thead><tbody>
+    ${S.paycodes.map(a => `<tr><td class="mono"><b>${esc(a.Title)}</b></td><td>${esc(a.CodeDescription)}</td><td>${esc(a.TransactionType)}</td><td>${esc(a.IsTax)}</td><td>${esc(a.PCNotes)}</td></tr>`).join("")}</tbody></table></div>`;
+  if (t === "doctypes") body = `<div class="grid two">${S.doctypes.map(d => `<div class="card"><h3>${esc(d.Title)} <span class="note">v${esc(d.TemplateVersion || "1.0")}</span></h3>
+    <div class="note">Required</div><ul>${lines(d.RequiredFields).map(x => `<li>${esc(x)}</li>`).join("") || "<li>-</li>"}</ul>
+    ${lines(d.OptionalFields).length ? `<div class="note">Optional</div><ul>${lines(d.OptionalFields).map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</div>`).join("")}</div>`;
+  const canAg = canEnter() && t === "agencies";
+  return `<div class="bar"><h2>Agencies &amp; codes</h2><span class="grow"></span>${canAg ? `<button class="btn primary" id="newAg">+ Agency</button>` : ""}</div>
+    <div class="tabs chips">${tabs}</div>${body}
+    <p class="note">${t === "agencies" ? (canAg ? "Click an agency to edit it. " : "") + "Other names are the spellings used on forms and in the old register - entries typed with any of them are saved under the agency's proper name." : `Owners maintain this list in SharePoint (${esc(L[t])}).`}</p>`;
+}
+function agencyDialog(a){
+  a = a || { AgencyActive:"Yes" };
+  const types = ["National Department","Provincial Health Authority","Hospital","Disciplined Service","Statutory Body","Office / Commission","ABG Department","Provincial / LLG","Other"];
+  const d = $("#dlg");
+  d.innerHTML = `<div class="dh"><div class="dt"><span class="kind">Agency</span><h2>${esc(a.Title || "New agency")}</h2></div></div>
+    <div class="db"><div class="fg">
+      <label class="fld w2"><span class="req">Agency name</span><input id="aT" value="${esc(a.Title)}"></label>
+      <label class="fld"><span>Agency code</span><input id="aC" value="${esc(a.AgencyCode)}"></label>
+      <label class="fld"><span>Type</span><select id="aTy"><option></option>${types.map(x => opt(x, a.AgencyType)).join("")}</select></label>
+      <label class="fld"><span>Province</span><input id="aP" value="${esc(a.Province)}"></label>
+      <label class="fld"><span>DPM region / branch</span><input id="aR" value="${esc(a.DPMRegion)}" list="dlRegions"></label>
+      <label class="fld"><span>Annual PE budget (K)</span><input id="aB" type="number" step="0.01" value="${esc(a.AnnualPEBudget)}"></label>
+      <label class="fld"><span>Budget year</span><input id="aY" value="${esc(a.BudgetYear)}"></label>
+      <label class="fld"><span>Active</span><select id="aA">${opt("Yes", a.AgencyActive)}${opt("No", a.AgencyActive)}</select></label>
+      <label class="fld w3"><span>Other names (one per line)</span><textarea id="aAl">${esc(a.Aliases)}</textarea></label>
+      <label class="fld w3"><span>Notes</span><textarea id="aN">${esc(a.AgencyNotes)}</textarea></label>
+    </div></div>
+    <div class="df"><button class="btn" id="aX">Cancel</button><button class="btn primary" id="aS">Save</button></div>
+    <datalist id="dlRegions">${lines(setting("DPMRegions")).map(r => `<option value="${esc(r)}">`).join("")}</datalist>`;
+  d.showModal();
+  $("#aX").onclick = () => d.close();
+  $("#aS").onclick = async () => {
+    const f = { Title:$("#aT").value.trim(), AgencyCode:$("#aC").value.trim(), AgencyType:$("#aTy").value, Province:$("#aP").value.trim(), DPMRegion:$("#aR").value.trim(),
+      AnnualPEBudget: $("#aB").value === "" ? null : num($("#aB").value), BudgetYear:$("#aY").value.trim(), AgencyActive:$("#aA").value, Aliases:$("#aAl").value, AgencyNotes:$("#aN").value };
+    if (!f.Title) return toast("Agency name is required");
+    const clash = S.agencies.find(x => x.id !== a.id && norm(x.Title) === norm(f.Title));
+    if (clash) return toast("There's already an agency with that name");
+    try {
+      const saved = DEMO ? { id: a.id || "d" + Date.now(), ...f } : await saveListItem(L.agencies, a.id, f);
+      const i = S.agencies.findIndex(x => x.id === a.id);
+      if (i >= 0) S.agencies[i] = { ...S.agencies[i], ...f }; else S.agencies.push({ ...saved, ...f });
+      d.close(); toast("Agency saved"); render();
+    } catch(e){ toast(isForbidden(e) ? "You don't have permission to change agencies" : "Couldn't save: " + e.message); }
+  };
+}
+
+/* =====================================================================
+   SETTINGS
+   ===================================================================== */
+function viewSettings(){
+  const rows = DEMO ? Object.entries(S.settings).map(([k, v]) => ({ Title:k, SettingValue:v, Notes:"" })) : S.settingRows;
+  return `<div class="bar"><h2>Settings</h2></div>
+    <div class="grid two">
+      <div class="card"><h3>Hub settings</h3><div class="tablewrap" style="box-shadow:none"><table style="min-width:0"><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody>
+        ${rows.map(r => `<tr data-set="${esc(r.Title)}" title="${esc(r.Notes || "")}"><td><b>${esc(r.Title)}</b>${r.Notes ? `<div class="note">${esc(r.Notes)}</div>` : ""}</td><td style="white-space:pre-wrap">${esc(r.SettingValue)}</td></tr>`).join("")}</tbody></table></div>
+        <p class="note">${isAdmin() ? "Click a setting to change it." : "Only Admins can change settings."}</p></div>
+      <div class="card"><h3>People and roles</h3>
+        <p class="note">You are signed in as <b>${esc(me.name)}</b> - role <b>${esc(me.role)}</b>.</p>
+        <ul class="list">${S.users.map(u => `<li style="cursor:default"><span class="id">${esc(u.Title)}</span><span class="x">${esc(u.UserEmail)}</span>${pill(u.HubRole, {})}</li>`).join("") || `<li style="cursor:default">No one listed yet.</li>`}</ul>
+        <p class="note">Roles: <b>Data Entry</b> enters batches and attaches scans · <b>Checker</b> accepts or rejects (not their own entries) · <b>Manager</b> read only · <b>Admin</b> everything. Add people in the SharePoint list ${esc(L.users)}.</p>
+        <h3 style="margin-top:18px">Connection</h3>
+        <p class="note">${DEMO ? "Demo mode - not connected." : `${esc(CONFIG.SP_HOST + CONFIG.SITE_PATH)} · lists start with ${esc(BRAND.LIST_PREFIX)}`}</p>
+        <p class="note">Read automatically (AWS): <b>${esc(setting("ReadAutomatically", "Off"))}</b> - stays off until the AWS reading service is approved.</p></div>
+    </div>`;
+}
+function settingDialog(key){
+  const row = S.settingRows.find(r => r.Title === key) || { Title:key, SettingValue:S.settings[key] };
+  const d = $("#dlg");
+  d.innerHTML = `<div class="dh"><div class="dt"><span class="kind">Setting</span><h2>${esc(key)}</h2></div></div>
+    <div class="db"><p class="note">${esc(row.Notes || "")}</p><label class="fld"><span>Value</span><textarea id="sV">${esc(row.SettingValue)}</textarea></label></div>
+    <div class="df"><button class="btn" id="sX">Cancel</button><button class="btn primary" id="sS">Save</button></div>`;
+  d.showModal();
+  $("#sX").onclick = () => d.close();
+  $("#sS").onclick = async () => {
+    const v = $("#sV").value;
+    try {
+      if (!DEMO){ if (row.id) await saveListItem(L.settings, row.id, { SettingValue:v }); else S.settingRows.push(await saveListItem(L.settings, null, { Title:key, SettingValue:v })); }
+      row.SettingValue = v; S.settings[key] = v; d.close(); toast("Setting saved"); render();
+    } catch(e){ toast(isForbidden(e) ? "Only site Owners can change settings in SharePoint" : "Couldn't save: " + e.message); }
+  };
+}
+
+/* ---------------- list-view events ---------------- */
+function bindView(){
+  const m = $("#main");
+  m.onclick = e => {
+    const t = e.target;
+    const kp = t.closest("[data-go]"); if (kp){ const [v, s] = kp.dataset.go.split("|"); if (v === "batches"){ F.b.status = s; F.b.week = F.d.week; } else { F.r.status = s; F.r.week = F.d.week; } go(v); if (location.hash.slice(1) === v) route(); return; }
+    const o = t.closest("[data-open]"); if (o) return go("batch/" + encodeURIComponent(o.dataset.open));
+    const or = t.closest("[data-openref]"); if (or){ const b = S.batches.find(x => x.Title === or.dataset.openref); if (b) go("batch/" + encodeURIComponent(b.id)); return; }
+    const bs = t.closest("[data-bs]"); if (bs){ F.b.status = bs.dataset.bs; render(); return; }
+    const rf = t.closest("[data-ref]"); if (rf){ F.ref = rf.dataset.ref; render(); return; }
+    const ag = t.closest("[data-ag]"); if (ag && canEnter()){ agencyDialog(S.agencies.find(x => String(x.id) === ag.dataset.ag)); return; }
+    const st = t.closest("[data-set]"); if (st && isAdmin()){ settingDialog(st.dataset.set); return; }
+    if (t.id === "newB") return go("batch/new");
+    if (t.id === "newAg") return agencyDialog();
+    if (t.id === "rCsv") return csv(`${BRAND.SHORT}-register-${TODAY}.csv`, registerRows(), REG_COLS);
+  };
+  const on = (id, fn) => { const el = $("#" + id); if (el) el.addEventListener(el.type === "search" ? "input" : "change", fn); };
+  on("dWeek", e => { F.d.week = e.target.value; render(); });
+  on("dAg", e => { F.d.agency = e.target.value; render(); });
+  on("bQ", e => { F.b.q = e.target.value; renderKeep("bQ"); });
+  on("bWeek", e => { F.b.week = e.target.value; render(); });
+  on("rQ", e => { F.r.q = e.target.value; renderKeep("rQ"); });
+  on("rAg", e => { F.r.agency = e.target.value; render(); });
+  on("rTT", e => { F.r.tt = e.target.value; render(); });
+  on("rSt", e => { F.r.status = e.target.value; render(); });
+  on("rWk", e => { F.r.week = e.target.value; render(); });
+}
+function renderKeep(id){ const pos = $("#" + id).selectionStart; render(); const el = $("#" + id); el.focus(); el.setSelectionRange(pos, pos); }
+
+/* =====================================================================
+   BATCH EDITOR
+   ===================================================================== */
+const blankLine = () => ({ EmployeeNo:"", EmployeeName:"", NatureOfClaim:"", PaymentCategory:"", PayCode:"", PeriodFrom:"", PeriodTo:"", PeriodText:"", Fortnights:"", Gross:"", Tax:"", Net:"", StatedTaxPct:"", PinkFormMatched:"No", MarkedPaid:false, Remarks:"" });
+const CTL = [["AgencyName","Agency (Department)","agency",1],["PayNo","Pay No","text",1,"23/26"],["PayDate","Pay Date","date",1],["FormType","Type of Form","form",1],
+  ["NumberOfForms","Number of Forms","number",1],["BatchNumber","Batch Number"],["FirstAdviceNo","First Advice No"],["LastAdviceNo","Last Advice No"],
+  ["RaisedBy","Batch Raised By","text",1],["RaisedByPhone","Telephone"],["RaisedDate","Date Raised","date",1],["ReceivedDate","Date Received by DPM","date",1],
+  ["PAOfficer","Public Accounts Authorised Officer"],["PADate","Public Accounts Date","date"],["PAStamped","Public Accounts Stamp","yesno"]];
+const SUM = [["TransactionType","Transaction Type","ttype",1],["DPMRegion","DPM Region / Branch","region"],["SummaryRef","Summary Ref (e.g. Costing for batch #003)"],
+  ["SummaryPreparedBy","Prepared By","text",1],["SummaryPreparedDate","Prepared Date","date",1],["SummaryCheckedBy","Checked By","text",1],["SummaryCheckedDate","Checked Date","date",1],
+  ["SummaryValidatedBy","Validated By"],["SummaryValidatedDate","Validated Date","date"],["SummaryCertifiedBy","Certified By"],["SummaryCertifiedDate","Certified Date","date"],
+  ["TotalGross","Total Gross on summary (K)","money"],["TotalTax","Total Tax on summary (K)","money"],["TotalNet","Total Net on summary (K)","money"],["AgencyClaimedGross","Agency Claimed Gross (K) - if shown","money"]];
+
+function openBatch(id){
+  if (id === "new"){
+    if (!canEnter()){ toast("Your role can't enter batches"); go("batches"); return; }
+    ed = { b:{ BatchStatus:"Draft", ReceivedDate:TODAY, FormType:"Offline Payment (Special Pay)", CaptureMethod:"Manual entry" }, lines:[blankLine()], removed:[], docs:[], isNew:true };
+  } else {
+    const b = S.batches.find(x => String(x.id) === String(id));
+    if (!b){ toast("Batch not found"); go("batches"); return; }
+    ed = { b:{ ...b }, lines: batchLines(b.Title).sort((x, y) => String(x.Title).localeCompare(String(y.Title))).map(l => ({ ...l, MarkedPaid: l.LineStatus === "Held - marked paid" })), removed:[], docs:null };
+    if (!ed.lines.length) ed.lines = [blankLine()];
+    loadDocs();
+  }
+  ed.dirty = false; render();
+}
+const editable = () => ed && canEnter() && ["Draft","Submitted for check"].includes(ed.b.BatchStatus || "Draft");
+
+function field([k, label, type = "text", req, ph]){
+  const v = ed.b[k] ?? "", cls = type === "agency" || k === "SummaryRef" || k === "PAOfficer" ? "w2" : "";
+  const lab = `<span class="${req ? "req" : ""}">${esc(label)}</span>`;
+  let inp;
+  if (type === "form") inp = `<select data-f="${k}"><option></option>${FORM_TYPES.map(x => opt(x, v)).join("")}</select>`;
+  else if (type === "ttype") inp = `<select data-f="${k}"><option></option>${S.ttypes.filter(t => t.TTActive !== "No" || t.Title === v).map(t => opt(t.Title, v)).join("")}</select>`;
+  else if (type === "yesno") inp = `<select data-f="${k}"><option></option>${opt("Yes", v)}${opt("No", v)}</select>`;
+  else if (type === "agency") inp = `<input data-f="${k}" list="dlAg" value="${esc(v)}" placeholder="Type to search agencies">`;
+  else if (type === "region") inp = `<input data-f="${k}" list="dlRegions" value="${esc(v)}">`;
+  else if (type === "date") inp = `<input type="date" data-f="${k}" value="${esc(v)}">`;
+  else if (type === "number" || type === "money") inp = `<input type="number" ${type === "money" ? 'step="0.01"' : 'step="1" min="0"'} data-f="${k}" value="${esc(v)}">`;
+  else inp = `<input data-f="${k}" value="${esc(v)}" ${ph ? `placeholder="${esc(ph)}"` : ""}>`;
+  return `<label class="fld ${cls}">${lab}${inp}</label>`;
+}
+function lineRow(l, i, bad){
+  const n = (k, step = "0.01") => `<input class="n ${["Gross","Tax","Net"].includes(k) ? "m" : ""} ${bad ? "e" : ""}" type="number" step="${step}" data-l="${i}" data-k="${k}" value="${esc(l[k])}">`;
+  const t = (k, w, list) => `<input data-l="${i}" data-k="${k}" value="${esc(l[k])}" ${list ? `list="${list}"` : ""} style="${w ? "min-width:" + w + "px" : ""}">`;
+  const rate = num(l.Gross) > 0 ? (num(l.Tax) / num(l.Gross) * 100).toFixed(1) + "%" : "";
+  return `<tr class="${bad ? "bad" : ""}" data-row="${i}"><td class="rn">${i+1}</td><td>${t("EmployeeNo", 92)}</td><td>${t("EmployeeName", 150)}</td>
+    <td><select data-l="${i}" data-k="NatureOfClaim"><option></option>${NATURES.map(x => opt(x, l.NatureOfClaim)).join("")}</select></td>
+    <td>${t("PayCode", 70, "dlPay")}</td><td>${t("PaymentCategory", 90)}</td>
+    <td><input type="date" data-l="${i}" data-k="PeriodFrom" value="${esc(l.PeriodFrom)}"></td><td><input type="date" data-l="${i}" data-k="PeriodTo" value="${esc(l.PeriodTo)}"></td>
+    <td>${t("PeriodText", 120)}</td><td>${n("Fortnights", "0.1")}</td><td>${n("Gross")}</td><td>${n("Tax")}</td><td>${n("Net")}</td>
+    <td class="mono rate" style="text-align:right">${rate}</td><td>${n("StatedTaxPct", "0.1")}</td>
+    <td style="text-align:center"><input type="checkbox" data-l="${i}" data-k="PinkFormMatched" ${l.PinkFormMatched === "Yes" ? "checked" : ""} title="Matching Special Offline Payment Form is in the batch"></td>
+    <td style="text-align:center"><input type="checkbox" data-l="${i}" data-k="MarkedPaid" ${l.MarkedPaid ? "checked" : ""} title='Tick if someone has written "Paid" on the form'></td>
+    <td>${t("Remarks", 140)}</td><td><button class="x" data-del="${i}" title="Remove line">×</button></td></tr>`;
+}
+function renderEditor(banner){
+  const b = ed.b, can = editable();
+  const checks = checkBatch(b, ed.lines, ed.docs);
+  const errs = checks.filter(c => c.sev === "e"), badLines = new Set(errs.filter(c => c.line != null).map(c => c.line));
+  const events = b.Title ? S.events.filter(e => e.Title === b.Title).sort((x, y) => String(y.EventOn).localeCompare(String(x.EventOn))) : [];
+  const ownEntry = norm(b.EnteredBy) && norm(b.EnteredBy) === norm(me.name);
+  $("#main").innerHTML = banner + `
+    <div class="edhead"><button class="btn" id="back">← Batches</button><h2>${esc(b.Title || "New batch")}</h2>${pill(b.BatchStatus || "Draft")}
+      <span class="sub">${b.AgencyName ? esc(b.AgencyName) : ""}${b.PayNo ? " · Pay " + esc(b.PayNo) : ""}${b.ResubmissionOf ? " · resubmission of " + esc(b.ResubmissionOf) : ""}</span></div>
+    ${b.BatchStatus === "Rejected" || b.BatchStatus === "Returned to agency" ? `<div class="banner err"><b>Rejected</b>${b.AcceptedBy ? " by " + esc(b.AcceptedBy) + " on " + fmtDate(b.AcceptedDate) : ""}${b.ReturnedDate ? " · returned to agency " + fmtDate(b.ReturnedDate) : ""}<div style="white-space:pre-wrap;margin-top:6px">${esc(b.RejectionReasons)}</div></div>` : ""}
+    <div id="edForm" class="${can ? "" : "readonly"}">
+    <div class="sec s-ctl"><h3>1 · Batch Control Form</h3><div class="fg">${CTL.map(field).join("")}</div></div>
+    <div class="sec s-sum"><h3>2 · DPM Validated Summary</h3><div class="fg">${SUM.map(field).join("")}
+      <label class="fld w3"><span>Notes</span><textarea data-f="BatchNotes">${esc(b.BatchNotes)}</textarea></label></div></div>
+    <div class="sec s-lines"><h3>3 · Payment lines - one per employee (Special Offline Payment Forms)</h3>
+      <div class="tablewrap" style="box-shadow:none"><table class="lines"><thead><tr><th>#</th><th>Emp / File No</th><th>Name</th><th>Nature</th><th>Pay code</th><th>Category</th><th>Period from</th><th>Period to</th><th>Period (as written)</th><th>Ftns</th><th>Gross</th><th>Tax</th><th>Net</th><th>Tax %</th><th>Stated %</th><th title="Pink form matched">Pink ✓</th><th title='Marked "Paid" by hand'>Paid?</th><th>Remarks</th><th></th></tr></thead>
+      <tbody id="lnBody">${ed.lines.map((l, i) => lineRow(l, i, badLines.has(i))).join("")}</tbody>
+      <tfoot><tr><td colspan="10">Totals (${ed.lines.length} line${ed.lines.length === 1 ? "" : "s"})</td><td id="tG">${kina(sumOf(ed.lines, "Gross"))}</td><td id="tT">${kina(sumOf(ed.lines, "Tax"))}</td><td id="tN">${kina(sumOf(ed.lines, "Net"))}</td><td colspan="6"></td></tr></tfoot></table></div>
+      ${can ? `<div style="margin-top:10px"><button class="btn" id="addLn">+ Add line</button> <span class="note">Tick <b>Pink ✓</b> when the employee's Special Offline Payment Form is in the batch and matches. Tick <b>Paid?</b> if someone has written "Paid" on it.</span></div>` : ""}</div>
+    </div>
+    <div class="sec s-chk" id="chkSec">${checksHtml(checks)}</div>
+    <div class="sec s-docs"><h3>4 · Scanned documents</h3><div id="docBox">${docsHtml()}</div></div>
+    ${events.length ? `<div class="sec s-hist"><h3>History</h3><ul class="list hist">${events.map(e => `<li><span class="id mono">${esc(String(e.EventOn || "").replace("T", " "))}</span><span class="x"><b>${esc(e.EventType)}</b> - ${esc(e.EventBy)}${e.Details ? `<div class="note" style="white-space:pre-wrap">${esc(e.Details)}</div>` : ""}</span></li>`).join("")}</ul></div>` : ""}
+    <div class="actions"><span class="note" id="actNote">${actionNote(errs.length, ownEntry)}</span><span class="grow"></span>${actionButtons(errs.length, ownEntry)}</div>
+    <datalist id="dlAg">${S.agencies.filter(a => a.AgencyActive !== "No").map(a => `<option value="${esc(a.Title)}">`).join("")}</datalist>
+    <datalist id="dlRegions">${lines(setting("DPMRegions")).map(r => `<option value="${esc(r)}">`).join("")}</datalist>
+    <datalist id="dlPay">${S.paycodes.map(p => `<option value="${esc(p.Title)}">${esc(p.CodeDescription || "")}</option>`).join("")}</datalist>`;
+  if (!can) $$("#edForm input, #edForm select, #edForm textarea").forEach(x => x.disabled = true);
+  bindEditor();
+}
+function checksHtml(checks){
+  const e = checks.filter(c => c.sev === "e"), w = checks.filter(c => c.sev === "w");
+  const li = c => `<li class="${c.sev}"><span class="tag">${c.sev === "e" ? "Error" : "Check"}</span><span><span class="rule">${esc(c.rule)}</span> - ${esc(c.msg)}</span></li>`;
+  return `<h3>Checks</h3>${e.length ? `<p><b>${e.length} error(s)</b> - ${setting("RejectWholeBatch", "Yes") === "Yes" ? "the whole batch must be rejected unless these are corrected from the documents" : "these must be fixed"}.</p>` : `<p class="okline">✓ No errors - the batch passes every check.</p>`}
+    <ul class="chk">${e.map(li).join("")}${w.map(li).join("")}</ul>`;
+}
+function actionNote(nErr, own){
+  const s = ed.b.BatchStatus || "Draft";
+  if (!canEnter()) return "Read only for your role.";
+  if (s === "Draft") return nErr ? "Save as draft while you enter. It can be submitted once it has no errors, or a Checker can reject it." : "Ready to submit for checking.";
+  if (s === "Submitted for check") return canCheck() ? (own ? "You entered this batch - another Checker must accept it." : nErr ? "Errors found - reject the batch and return it to the agency." : "All checks pass - accept or reject.") : "Waiting for a Checker.";
+  if (s === "Accepted") return `Accepted by ${ed.b.AcceptedBy || ""} on ${fmtDate(ed.b.AcceptedDate)} - locked.`;
+  return "Rejected - return it to the agency; a corrected batch is entered as a resubmission.";
+}
+function actionButtons(nErr, own){
+  const s = ed.b.BatchStatus || "Draft", out = [];
+  if (editable()){ out.push(`<button class="btn" id="aSave">Save draft</button>`); if (s === "Draft") out.push(`<button class="btn primary" id="aSubmit" ${nErr ? "disabled title='Fix the errors first, or ask a Checker to reject it'" : ""}>Submit for check</button>`); }
+  if (canCheck() && ["Draft","Submitted for check"].includes(s) && ed.b.Title) out.push(`<button class="btn danger" id="aReject">Reject batch…</button>`);
+  if (canCheck() && s === "Submitted for check") out.push(`<button class="btn primary" id="aAccept" ${nErr || own ? "disabled" : ""} title="${own ? "You can't accept a batch you entered" : nErr ? "Every check must pass" : ""}">Accept</button>`);
+  if (canEnter() && s === "Rejected") out.push(`<button class="btn" id="aReturn">Mark returned to agency</button>`);
+  if (canEnter() && ["Rejected","Returned to agency"].includes(s)) out.push(`<button class="btn primary" id="aResub">Enter resubmission</button>`);
+  return out.join(" ");
+}
+function refreshChecks(){
+  const checks = checkBatch(ed.b, ed.lines, ed.docs);
+  const errs = checks.filter(c => c.sev === "e"), bad = new Set(errs.filter(c => c.line != null).map(c => c.line));
+  $("#chkSec").innerHTML = checksHtml(checks);
+  $$("#lnBody tr").forEach(tr => { const i = +tr.dataset.row; tr.classList.toggle("bad", bad.has(i)); tr.querySelectorAll("input.n").forEach(x => x.classList.toggle("e", bad.has(i)));
+    const l = ed.lines[i]; tr.querySelector(".rate").textContent = num(l.Gross) > 0 ? (num(l.Tax) / num(l.Gross) * 100).toFixed(1) + "%" : ""; });
+  $("#tG").textContent = kina(sumOf(ed.lines, "Gross")); $("#tT").textContent = kina(sumOf(ed.lines, "Tax")); $("#tN").textContent = kina(sumOf(ed.lines, "Net"));
+  const own = norm(ed.b.EnteredBy) && norm(ed.b.EnteredBy) === norm(me.name);
+  $("#actNote").textContent = actionNote(errs.length, own);
+  const sub = $("#aSubmit"); if (sub) sub.disabled = !!errs.length;
+  const acc = $("#aAccept"); if (acc) acc.disabled = !!errs.length || own;
+}
+function bindEditor(){
+  $("#back").onclick = () => { if (ed.dirty && !confirm("Leave without saving your changes?")) return; ed = null; go("batches"); route(); };
+  const form = $("#edForm");
+  form.addEventListener("input", e => {
+    const t = e.target;
+    if (t.dataset.f){ ed.b[t.dataset.f] = t.value; ed.dirty = true; refreshChecks(); }
+    else if (t.dataset.l != null){ const l = ed.lines[+t.dataset.l], k = t.dataset.k;
+      if (t.type === "checkbox") l[k] = k === "MarkedPaid" ? t.checked : (t.checked ? "Yes" : "No"); else l[k] = t.value;
+      // fill net from gross - tax when net is still empty
+      if ((k === "Gross" || k === "Tax") && l._autoNet !== false && (l.Net === "" || l._autoNet)){ if (l.Gross !== "" && l.Tax !== ""){ l.Net = r2(num(l.Gross) - num(l.Tax)); l._autoNet = true; const n = form.querySelector(`[data-l="${t.dataset.l}"][data-k="Net"]`); if (n) n.value = l.Net; } }
+      if (k === "Net") l._autoNet = false;
+      ed.dirty = true; refreshChecks(); }
+  });
+  form.addEventListener("change", e => {
+    const t = e.target;
+    if (t.dataset.f === "AgencyName"){ const a = matchAgency(t.value); if (a && a.Title !== t.value){ t.value = a.Title; ed.b.AgencyName = a.Title; toast(`Saved under "${a.Title}"`); }
+      if (a && !ed.b.DPMRegion && a.DPMRegion){ ed.b.DPMRegion = a.DPMRegion; const r = form.querySelector('[data-f="DPMRegion"]'); if (r) r.value = a.DPMRegion; } refreshChecks(); }
+    if (t.dataset.k === "EmployeeNo"){ t.value = t.value.trim().toUpperCase(); ed.lines[+t.dataset.l].EmployeeNo = t.value; refreshChecks(); }
+  });
+  form.addEventListener("click", e => { const d = e.target.closest("[data-del]"); if (d && editable()){ const i = +d.dataset.del; const [gone] = ed.lines.splice(i, 1); if (gone.id) ed.removed.push(gone); if (!ed.lines.length) ed.lines.push(blankLine()); ed.dirty = true; render(); } });
+  $("#addLn")?.addEventListener("click", () => { ed.lines.push(blankLine()); ed.dirty = true; render(); const rows = $$("#lnBody tr"); rows[rows.length-1]?.querySelector("input")?.focus(); });
+  $("#aSave")?.addEventListener("click", () => saveBatch());
+  $("#aSubmit")?.addEventListener("click", () => saveBatch("Submitted for check"));
+  $("#aAccept")?.addEventListener("click", () => decide("Accepted"));
+  $("#aReject")?.addEventListener("click", rejectDialog);
+  $("#aReturn")?.addEventListener("click", async () => { ed.b.ReturnedDate = TODAY; await saveBatch("Returned to agency", { event:"Returned to agency" }); });
+  $("#aResub")?.addEventListener("click", startResubmission);
+  bindDocs();
+}
+
+/* ---------------- numbering ---------------- */
+async function nextRef(){
+  const fmt = setting("BatchFormat", "B-{yyyy}-{n:4}");
+  const key = fmt.replace(/\{yyyy\}/g, YEAR).replace(/\{n(:\d+)?\}/g, "").replace(/[-_ ]+$/, "") || "B";
+  let row = S.numbers.find(n => n.Title === key);
+  let n = num(row?.LastNumber);
+  // never reuse a number already on a batch (e.g. counter reset)
+  const used = S.batches.map(b => { const m = String(b.Title || "").startsWith(key) ? /(\d+)\D*$/.exec(b.Title) : null; return m ? +m[1] : 0; });
+  n = Math.max(n, ...used, 0) + 1;
+  if (!DEMO){ if (row) await saveListItem(L.numbers, row.id, { LastNumber:n }); else { row = await saveListItem(L.numbers, null, { Title:key, LastNumber:n }); S.numbers.push(row); } }
+  if (row) row.LastNumber = n; else S.numbers.push({ id:"n" + Date.now(), Title:key, LastNumber:n });
+  return fmt.replace(/\{yyyy\}/g, YEAR).replace(/\{n(?::(\d+))?\}/g, (_, w) => pad(n, +w || 1));
+}
+async function logEvent(ref, type, details = ""){
+  const ev = { Title:ref, EventType:type, EventBy:me.name, EventOn:`${TODAY} ${hhmm(new Date())}`, Details:details };
+  try { const saved = DEMO ? { id:"e" + Date.now() + Math.random(), ...ev } : await saveListItem(L.events, null, ev); S.events.push({ ...ev, ...saved }); }
+  catch(e){ console.warn("Audit entry not saved", e); toast("Saved, but the history entry couldn't be written: " + e.message); }
+}
+
+/* ---------------- save ---------------- */
+const B_FIELDS = ["AgencyName","BatchNumber","PayNo","PayDate","FormType","NumberOfForms","FirstAdviceNo","LastAdviceNo","RaisedBy","RaisedByPhone","RaisedDate","PAOfficer","PADate","PAStamped",
+  "TransactionType","DPMRegion","SummaryRef","SummaryPreparedBy","SummaryPreparedDate","SummaryCheckedBy","SummaryCheckedDate","SummaryValidatedBy","SummaryValidatedDate","SummaryCertifiedBy","SummaryCertifiedDate",
+  "TotalGross","TotalTax","TotalNet","AgencyClaimedGross","ReceivedDate","BatchStatus","RejectionReasons","ReturnedDate","ResubmissionOf","EnteredBy","EnteredDate","VerifiedBy","VerifiedDate","AcceptedBy","AcceptedDate","CaptureMethod","BatchNotes"];
+const L_FIELDS = ["EmployeeNo","EmployeeName","NatureOfClaim","PaymentCategory","PayCode","PeriodFrom","PeriodTo","PeriodText","Fortnights","Gross","Tax","Net","StatedTaxPct","PinkFormMatched","Remarks","AgencyClaimedGross","AgencyClaimedTax","AgencyClaimedNet","Designation","GradeStep","Reason","PeriodEndDate"];
+const NUMERIC = new Set(["NumberOfForms","TotalGross","TotalTax","TotalNet","AgencyClaimedGross","Fortnights","Gross","Tax","Net","StatedTaxPct","AgencyClaimedTax","AgencyClaimedNet","TaxRatePct","LineCount"]);
+function clean(obj, keys){ const o = {}; keys.forEach(k => { let v = obj[k]; if (v === undefined) return; if (NUMERIC.has(k)) v = v === "" || v == null ? null : num(v); else v = v == null ? "" : String(v); o[k] = v; }); return o; }
+
+let saving = false;
+async function saveBatch(newStatus, opts = {}){
+  if (saving) return; saving = true;
+  const btns = $$(".actions button"); btns.forEach(x => x.disabled = true);
+  try {
+    const b = ed.b, wasNew = !b.id, prev = b.BatchStatus || "Draft";
+    const a = matchAgency(b.AgencyName); if (a) b.AgencyName = a.Title;
+    if (!String(b.AgencyName || "").trim()) throw new Error("enter the agency first");
+    // drop completely empty lines
+    ed.lines = ed.lines.filter(l => L_FIELDS.some(k => l[k] !== "" && l[k] != null && !(k === "PinkFormMatched" && l[k] === "No")) || l.MarkedPaid || l.id);
+    if (!b.Title) b.Title = await nextRef();
+    if (wasNew){ b.EnteredBy = me.name; b.EnteredDate = TODAY; }
+    if (newStatus) b.BatchStatus = newStatus; else b.BatchStatus = prev;
+    const checks = checkBatch(b, ed.lines, ed.docs), errs = checks.filter(c => c.sev === "e");
+    if (newStatus === "Submitted for check" && errs.length) throw new Error("fix the errors first");
+    if (newStatus === "Accepted" && errs.length) throw new Error("every check must pass before accepting");
+    const lineErr = i => errs.filter(c => c.line === i).map(c => c.rule);
+    const st = b.BatchStatus;
+    const fields = { Title:b.Title, ...clean(b, B_FIELDS), LineCount: ed.lines.length, WeekEnding: weekEnding(b.ReceivedDate) };
+    const saved = DEMO ? { id: b.id || "b" + Date.now() } : await saveListItem(L.batches, b.id, fields);
+    b.id = b.id || saved.id; Object.assign(b, fields);
+    const bi = S.batches.findIndex(x => String(x.id) === String(b.id)); if (bi >= 0) S.batches[bi] = { ...b }; else S.batches.push({ ...b });
+    // lines
+    for (let i = 0; i < ed.lines.length; i++){
+      const l = ed.lines[i], le = lineErr(i);
+      const status = st === "Rejected" || st === "Returned to agency" ? "Rejected" : l.MarkedPaid ? "Held - marked paid" : st === "Accepted" ? "OK" : le.length ? "Query" : "Pending";
+      const lf = { Title:`${b.Title}-${pad(i+1, 2)}`, BatchRef:b.Title, AgencyName:b.AgencyName, TransactionType:b.TransactionType, PayNo:b.PayNo, WeekEnding:fields.WeekEnding,
+        ...clean(l, L_FIELDS), TaxRatePct: num(l.Gross) > 0 ? r2(num(l.Tax) / num(l.Gross) * 100) : null, LineStatus:status, ValidationFlags: errs.filter(c => c.line === i).map(c => c.msg).join("\n") };
+      const r = DEMO ? { id: l.id || "l" + Date.now() + i } : await saveListItem(L.lines, l.id, lf);
+      l.id = l.id || r.id; Object.assign(l, lf);
+      const li = S.lines.findIndex(x => String(x.id) === String(l.id)); const copy = { ...l }; delete copy.MarkedPaid; delete copy._autoNet;
+      if (li >= 0) S.lines[li] = copy; else S.lines.push(copy);
+    }
+    for (const g of ed.removed){ if (!DEMO) await deleteListItem(L.lines, g.id); S.lines = S.lines.filter(x => String(x.id) !== String(g.id)); }
+    ed.removed = [];
+    // audit trail
+    if (wasNew) await logEvent(b.Title, b.ResubmissionOf ? "Resubmitted" : "Created", b.ResubmissionOf ? `Resubmission of ${b.ResubmissionOf}` : `${ed.lines.length} line(s), ${kina(sumOf(ed.lines, "Gross"))} gross`);
+    if (opts.event) await logEvent(b.Title, opts.event, opts.details || "");
+    else if (newStatus && newStatus !== prev) await logEvent(b.Title, newStatus, newStatus === "Submitted for check" ? `${ed.lines.length} line(s), ${kina(sumOf(ed.lines, "Net"))} net, no errors` : "");
+    else if (!wasNew && prev !== "Draft") await logEvent(b.Title, "Edited", `${errs.length} error(s) after the change`);
+    ed.dirty = false; ed.isNew = false;
+    toast(newStatus ? `${b.Title}: ${b.BatchStatus}` : `${b.Title} saved`);
+    if (location.hash !== "#batch/" + encodeURIComponent(b.id)) history.replaceState(null, "", "#batch/" + encodeURIComponent(b.id));
+    if (wasNew) loadDocs(); else render();
+  } catch(e){
+    toast(isForbidden(e) ? "You don't have permission to save in SharePoint" : "Not saved: " + e.message);
+    $$(".actions button").forEach(x => x.disabled = false);
+  } finally { saving = false; }
+}
+async function decide(status){
+  const b = ed.b;
+  if (norm(b.EnteredBy) === norm(me.name)) return toast("You can't accept a batch you entered");
+  if (!confirm(`Accept ${b.Title}? ${ed.lines.length} line(s), ${kina(sumOf(ed.lines, "Net"))} net. The batch is then locked.`)) return;
+  b.AcceptedBy = me.name; b.AcceptedDate = TODAY; b.VerifiedBy = me.name; b.VerifiedDate = TODAY;
+  await saveBatch(status, { event:"Accepted", details:`${ed.lines.length} line(s), ${kina(sumOf(ed.lines, "Gross"))} gross, ${kina(sumOf(ed.lines, "Net"))} net` });
+}
+function rejectDialog(){
+  const errs = checkBatch(ed.b, ed.lines, ed.docs).filter(c => c.sev === "e");
+  const d = $("#dlg");
+  d.innerHTML = `<div class="dh"><div class="dt"><span class="kind" style="background:var(--crit)">Reject batch</span><h2>${esc(ed.b.Title)}</h2></div></div>
+    <div class="db"><p class="note">${setting("RejectWholeBatch", "Yes") === "Yes" ? "One bad form rejects the whole batch. " : ""}The reasons are kept on the batch, in its history and on the dashboard. Edit them as needed - one per line.</p>
+      <label class="fld"><span class="req">Reasons</span><textarea id="rjR" style="min-height:180px">${esc(errs.map(c => `[${c.rule}] - ${c.msg}`).join("\n"))}</textarea></label></div>
+    <div class="df"><button class="btn" id="rjX">Cancel</button><button class="btn primary" id="rjS" style="background:var(--crit);border-color:var(--crit)">Reject batch</button></div>`;
+  d.showModal();
+  $("#rjX").onclick = () => d.close();
+  $("#rjS").onclick = async () => {
+    const r = $("#rjR").value.trim(); if (!r) return toast("Give at least one reason");
+    d.close(); ed.b.RejectionReasons = r; ed.b.AcceptedBy = me.name; ed.b.AcceptedDate = TODAY;
+    await saveBatch("Rejected", { event:"Rejected", details:r });
+  };
+}
+async function startResubmission(){
+  const old = ed.b;
+  ed = { b:{ ...Object.fromEntries(B_FIELDS.map(k => [k, old[k]])), BatchStatus:"Draft", ResubmissionOf:old.Title, ReceivedDate:TODAY, RejectionReasons:"", ReturnedDate:"", AcceptedBy:"", AcceptedDate:"", VerifiedBy:"", VerifiedDate:"", EnteredBy:"", EnteredDate:"", CaptureMethod:"Manual entry" },
+    lines: ed.lines.map(l => { const c = {}; L_FIELDS.forEach(k => c[k] = l[k] ?? ""); c.MarkedPaid = false; return c; }), removed:[], docs:[], isNew:true, dirty:true };
+  history.replaceState(null, "", "#batch/new");
+  render(); toast(`Copied from ${old.Title} - correct it from the new documents, then save`);
+}
+
+/* ---------------- documents ---------------- */
+const safeName = s => String(s || "").replace(/[\\/:*?"<>|#%~&{}]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "Unknown";
+async function loadDocs(){
+  if (!ed?.b.Title){ if (ed) ed.docs = []; render(); return; }
+  const ref = ed.b.Title;
+  try {
+    ed.docs = DEMO ? S.docs.filter(d => d.BatchRef === ref) : await listItems(L.docs, `fields/BatchRef eq '${ref.replace(/'/g, "''")}'`, "fields,driveItem");
+  } catch(e){ ed.docs = []; ed.docErr = isMissingList(e) ? `The ${L.docs} library isn't set up yet.` : "Couldn't read the documents: " + e.message; }
+  if (ed && ed.b.Title === ref) render();
+}
+function docsHtml(){
+  if (!ed.b.Title) return `<p class="note">Save the batch first - documents are filed under its Batch Ref.</p>`;
+  if (ed.docs == null) return `<p class="note">Loading documents…</p>`;
+  const rows = ed.docs.map(d => { const name = d.FileLeafRef || d._drive?.name || d.name; const url = d._drive?.webUrl || d.url;
+    return `<tr><td>${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(name)}</a>` : esc(name)}</td><td>${esc(d.DocumentType)}</td><td class="mono">${esc(d.EmployeeNo)}</td><td>${esc(d.EmployeeName)}</td><td>${pill(d.DocStatus, { Received:"p-info", Verified:"p-ok", Rejected:"p-crit" })}</td></tr>`; }).join("");
+  const canUp = canEnter() && !["Accepted"].includes(ed.b.BatchStatus);
+  return `${ed.docErr ? `<div class="banner err">${esc(ed.docErr)}</div>` : ""}
+    ${rows ? `<div class="tablewrap docs" style="box-shadow:none"><table style="min-width:600px"><thead><tr><th>File</th><th>Document type</th><th>Emp / File No</th><th>Name</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="note">No documents attached yet. Scanning is optional while testing - the batch can be entered from the paper forms.</p>`}
+    ${canUp ? `<div class="upl"><label class="fld"><span>Document type</span><select id="upT">${DOC_TYPES.map(t => opt(t, "")).join("")}</select></label>
+      <label class="fld"><span>Employee (pink forms and calculations)</span><select id="upE"><option value="">-</option>${ed.lines.filter(l => l.EmployeeNo).map(l => `<option value="${esc(l.EmployeeNo)}">${esc(l.EmployeeNo + " " + (l.EmployeeName || ""))}</option>`).join("")}</select></label>
+      <label class="fld"><span>Scan(s) - PDF or image</span><input type="file" id="upF" multiple accept=".pdf,image/*"></label>
+      <button class="btn primary" id="upGo">Upload</button></div>
+      <p class="note">Filed in ${esc(L.docs)}/${esc(safeName(ed.b.AgencyName))}/${esc(ed.b.Title)}, with the batch ref, agency, pay no and document type on each file. Officers can't delete a scan - mark it Rejected and an Owner removes it.</p>` : ""}`;
+}
+function bindDocs(){
+  $("#upGo")?.addEventListener("click", async () => {
+    const files = [...($("#upF").files || [])]; if (!files.length) return toast("Choose the scanned file(s) first");
+    const type = $("#upT").value, emp = $("#upE").value, ln = ed.lines.find(l => l.EmployeeNo === emp);
+    const b = ed.b, folder = `${safeName(b.AgencyName)}/${b.Title}`;
+    const meta = { BatchRef:b.Title, AgencyName:b.AgencyName, DocumentType:type, EmployeeNo:emp, EmployeeName:ln?.EmployeeName || "", PayNo:b.PayNo || "", PayDate:b.PayDate || "", TransactionType:b.TransactionType || "", DocStatus:"Received", ReadMethod:"Manual entry", DocAmount: ln ? num(ln.Gross) : null };
+    $("#upGo").disabled = true; let ok = 0;
+    try {
+      if (!DEMO && !docDrive) docDrive = await libraryDrive(L.docs);
+      if (!DEMO && !docDrive) throw new Error(`the ${L.docs} library isn't set up yet`);
+      for (const f of files){
+        const name = `${b.Title} ${type}${emp ? " " + emp : ""} - ${safeName(f.name)}`.replace(/\s+/g, " ");
+        if (DEMO) S.docs.push({ id:"doc" + Date.now() + ok, FileLeafRef:name, url:URL.createObjectURL(f), ...meta });
+        else { const item = await uploadToDrive(docDrive, folder, name, f); await tagDriveItem(docDrive, item.id, meta); }
+        ok++;
+      }
+      await logEvent(b.Title, "Document added", `${ok} file(s): ${type}${emp ? " - " + emp : ""}`);
+      toast(`${ok} document(s) uploaded`);
+    } catch(e){ toast((ok ? `${ok} uploaded, then: ` : "Upload failed: ") + e.message); }
+    loadDocs();
+  });
+}
+
+/* =====================================================================
+   DEMO DATA - made up. No real people, file numbers or amounts.
+   ===================================================================== */
+function demoData(){
+  const ag = [["Department of Lands and Physical Planning","National Department","Lands and Physical Planning\nLANDS",9800000],["Northern Provincial Health Authority","Provincial Health Authority","Batch 1 - Northern Province PHA",0],
+    ["PNG Fire Service","Disciplined Service","Civil Fire Service",0],["Department of Provincial and Local Level Government Affairs","National Department","Provincial & LLG",6200000],["Southern Highlands Provincial Health Authority","Provincial Health Authority","SHP PHA",0]]
+    .map(([t, ty, al, bud], i) => ({ id:"a" + i, Title:t, AgencyType:ty, Aliases:al, AnnualPEBudget:bud || null, AgencyActive:"Yes", DPMRegion: i === 1 || i === 4 ? "Southern Region" : "Headquarters" }));
+  const tt = [["Gratuity","Yes","No"],["Final Entitlement","Yes","Yes"],["Offline Claim","Yes","No"],["Higher Duties Allowance","Yes","No"],["Outstanding Salary","Yes","No"]].map(([t, p, n], i) => ({ id:"t" + i, Title:t, NeedsPeriod:p, NeedsNature:n, TTActive:"Yes" }));
+  const pc = [["AGR35","Gratuity"],["AGR40","Gratuity"],["TAX","Tax"],["MILOL","Money in lieu of leave"],["HDA","Higher Duties Allowance"]].map(([t, d], i) => ({ id:"p" + i, Title:t, CodeDescription:d }));
+  const dt = DOC_TYPES.map((t, i) => ({ id:"dt" + i, Title:t, TemplateVersion:"1.0", RequiredFields: t === "Batch Control Form" ? "Department\nPay No\nPay Date\nType of Form\nNumber of Forms\nBatch Raised By" : t === "Special Offline Payment Form" ? "Employee Selection #\nName\nDepartment\nReason\nPeriod End Date\nPay lines\nPrepared / Checked signatures" : "" }));
+  const settings = { OrganisationName:"Department of Personnel Management", BatchFormat:"B-{yyyy}-{n:4}", RejectWholeBatch:"Yes", MaxTaxPct:"40", AmountTolerance:"0.00", RequirePinkFormPerLine:"Yes", HoldMarkedPaid:"Yes", WeekStartsOn:"Monday", DPMRegions:"Southern Region\nHighlands Region\nNGI Region\nExecutive Resourcing Service\nHeadquarters", ReadAutomatically:"Off", BudgetSource:"None", EmployeeMasterSource:"None" };
+  const wk1 = addDays(TODAY, -9), wk2 = addDays(TODAY, -2);
+  const B = [], Ls = [], Ev = [];
+  const mk = (n, agency, tt, recv, status, people, extra = {}) => {
+    const ref = `B-${YEAR}-${pad(n, 4)}`;
+    const b = { id:"b" + n, Title:ref, AgencyName:agency, PayNo:`2${n}/${YEAR.slice(2)}`, PayDate:addDays(recv, 14), FormType:"Offline Payment (Special Pay)", NumberOfForms:people.length, BatchNumber:"L" + (40 + n),
+      RaisedBy:"Demo Batch Officer", RaisedDate:addDays(recv, -3), ReceivedDate:recv, TransactionType:tt, DPMRegion:"Headquarters", SummaryPreparedBy:"Demo Preparer", SummaryPreparedDate:addDays(recv, -6),
+      SummaryCheckedBy:"Demo Checker", SummaryCheckedDate:addDays(recv, -5), BatchStatus:status, EnteredBy:"Demo Entry Officer", EnteredDate:recv, CaptureMethod:"Manual entry", WeekEnding:weekEnding(recv), ...extra };
+    people.forEach(([emp, name, g, rate, more = {}], i) => { const tax = r2(g * rate / 100);
+      Ls.push({ id:`l${n}-${i}`, Title:`${ref}-${pad(i+1)}`, BatchRef:ref, AgencyName:agency, TransactionType:tt, PayNo:b.PayNo, WeekEnding:b.WeekEnding, EmployeeNo:emp, EmployeeName:name, PayCode: tt === "Gratuity" ? (rate === 35 ? "AGR35" : "AGR40") : "", PeriodFrom:`${+YEAR-1}-11-02`, PeriodTo:`${YEAR}-11-01`, Gross:g, Tax:tax, Net:r2(g - tax), PinkFormMatched:"Yes", TaxRatePct:rate,
+        LineStatus: status === "Accepted" ? "OK" : status === "Rejected" ? "Rejected" : "Pending", ...more }); });
+    b.TotalGross = r2(people.reduce((a, p) => a + p[2], 0));
+    B.push(b);
+    Ev.push({ id:"e" + n, Title:ref, EventType:"Created", EventBy:"Demo Entry Officer", EventOn:`${recv} 09:15`, Details:`${people.length} line(s)` });
+    if (status !== "Draft") Ev.push({ id:"e2" + n, Title:ref, EventType:"Submitted for check", EventBy:"Demo Entry Officer", EventOn:`${recv} 11:40`, Details:"" });
+    if (status === "Accepted") Ev.push({ id:"e3" + n, Title:ref, EventType:"Accepted", EventBy:"Demo Checker", EventOn:`${addDays(recv, 1)} 10:05`, Details:"" });
+    if (status === "Rejected") Ev.push({ id:"e3" + n, Title:ref, EventType:"Rejected", EventBy:"Demo Checker", EventOn:`${addDays(recv, 1)} 14:30`, Details:extra.RejectionReasons });
+  };
+  mk(1, ag[0].Title, "Gratuity", wk1, "Accepted", [["90000101","Demo Employee A",19500,40,{ AgencyClaimedGross:24800 }],["90000102","Demo Employee B",21600,40],["90000103","Demo Employee C",15700,35]], { AcceptedBy:"Demo Checker", AcceptedDate:addDays(wk1, 1) });
+  mk(2, ag[1].Title, "Gratuity", wk1, "Rejected", [["90000201","Demo Employee D",23500,35],["9000202","Demo Employee E",83000,35]],
+    { RejectionReasons:"[Employee number] - Line 2 (Demo Employee E): \"9000202\" should be 8 characters\n[Number of forms] - Batch Control Form says 3 form(s) but there are 2 payment line(s)", NumberOfForms:3, AcceptedBy:"Demo Checker", AcceptedDate:addDays(wk1, 1) });
+  mk(3, ag[3].Title, "Final Entitlement", wk2, "Submitted for check", [["90000301","Demo Employee F",6700,35,{ NatureOfClaim:"Deceased", PaymentCategory:"MILOL" }],["90000302","Demo Employee G",13900,35,{ NatureOfClaim:"Resignation", PaymentCategory:"MILOL + MILOF" }]]);
+  mk(4, ag[2].Title, "Outstanding Salary", wk2, "Draft", [["90000401","Demo Employee H",15800,30,{ Net:11061.00 }]]);
+  mk(5, ag[1].Title, "Gratuity", wk2, "Submitted for check", [["90000501","Demo Employee J",88800,40,{ MarkedPaid:true, LineStatus:"Held - marked paid", Remarks:"Paid! written on summary" }]]);
+  const users = [{ id:"u1", Title:"Demo User", UserEmail:"demo@example.com", HubRole:"Admin" }, { id:"u2", Title:"Demo Entry Officer", UserEmail:"entry@example.com", HubRole:"Data Entry" }, { id:"u3", Title:"Demo Checker", UserEmail:"checker@example.com", HubRole:"Checker" }];
+  return { settings, settingRows:[], agencies:ag, ttypes:tt, paycodes:pc, doctypes:dt, users, numbers:[{ id:"n1", Title:`B-${YEAR}`, LastNumber:5 }], batches:B, lines:Ls, events:Ev, docs:[] };
+}
+
+/* =====================================================================
+   START
+   ===================================================================== */
+(async function start(){
+  try {
+    if (DEMO){ me.role = "Admin"; S = demoData(); resolveMe(); }
+    else {
+      await initAuth();
+      if (!account){
+        $("#main").innerHTML = `<div class="card signin"><h2>${esc(BRAND.SHORT)} ${esc(BRAND.APP_NAME)}</h2><p>${esc(BRAND.ORGANISATION)}</p><p>Sign in with your Microsoft 365 account.</p><button class="btn primary" id="si">Sign in</button></div>`;
+        $("#si").onclick = signIn; return;
+      }
+      await loadAll(); resolveMe();
+    }
+    document.title = `${BRAND.SHORT} ${BRAND.APP_NAME}`;
+    $("#nav").hidden = false; renderWho(); route();
+  } catch(e){
+    console.error(e);
+    $("#main").innerHTML = `<div class="banner err"><b>Couldn't open the Hub.</b> ${isMissingList(e) ? `The SharePoint list ${esc(e.list || "")} isn't there - run Setup-DPM-Hub.ps1 on ${esc(CONFIG.SP_HOST + CONFIG.SITE_PATH)} first.` : isForbidden(e) ? "Your account doesn't have access to the DPM site - ask the site owner to add you." : esc(e.message)}</div>`;
+  }
+})();
+</script>
+</body>
+</html>
