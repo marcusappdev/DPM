@@ -3,13 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f2a44'/%3E%3Ctext x='16' y='21' font-size='11' font-family='Arial' font-weight='700' text-anchor='middle' fill='%23c8962e'%3EDPM%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/png" sizes="32x32" href="shared/dpm-icon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="shared/dpm-icon.png">
+<link rel="apple-touch-icon" href="shared/dpm-icon.png">
 <title>DPM Document Management Hub</title>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
 <link rel="stylesheet" href="shared/dpm.css?v=20261122">
 <style>
 /* DPM Hub only - shared look is in shared/dpm.css */
-.logo .mark{background:var(--accent);color:var(--brand);border-radius:7px;padding:3px 8px;font-weight:800;letter-spacing:.5px}
+.logo .chip img{height:34px}
+.signin .crest{width:170px;height:auto;display:block;margin:0 auto 10px}
 .logo small{display:block;font-weight:400;font-size:11px;color:#c9d1db;letter-spacing:.2px}
 header .rolesel{background:#1d3550;color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:4px 6px;font-size:12px}
 .sec{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--sc,var(--accent));border-radius:var(--r);padding:14px 16px;margin-bottom:16px;box-shadow:var(--shadow)}
@@ -57,7 +60,7 @@ header .rolesel{background:#1d3550;color:#fff;border:1px solid rgba(255,255,255,
 </head>
 <body>
 <header>
-  <div class="logo"><span class="mark">DPM</span><div>Document Management Hub<small id="orgname"></small></div></div>
+  <div class="logo"><span class="chip"><img src="shared/dpm-crest.png" alt="Papua New Guinea national crest"></span><div>Document Management Hub<small id="orgname"></small></div></div>
   <nav id="nav" hidden>
     <button data-v="dash">Dashboard</button>
     <button data-v="batches">Batches</button>
@@ -826,7 +829,7 @@ function demoData(){
     else {
       await initAuth();
       if (!account){
-        $("#main").innerHTML = `<div class="card signin"><h2>${esc(BRAND.SHORT)} ${esc(BRAND.APP_NAME)}</h2><p>${esc(BRAND.ORGANISATION)}</p><p>Sign in with your Microsoft 365 account.</p><button class="btn primary" id="si">Sign in</button></div>`;
+        $("#main").innerHTML = `<div class="card signin"><img class="crest" src="shared/dpm-crest.png" alt="Papua New Guinea national crest"><h2>${esc(BRAND.SHORT)} ${esc(BRAND.APP_NAME)}</h2><p>${esc(BRAND.ORGANISATION)}</p><p>Sign in with your Microsoft 365 account.</p><button class="btn primary" id="si">Sign in</button></div>`;
         $("#si").onclick = signIn; return;
       }
       await loadAll(); resolveMe();
