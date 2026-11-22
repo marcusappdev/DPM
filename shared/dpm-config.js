@@ -10,7 +10,7 @@
    names or file numbers in this file or anywhere in the repo.
    ===================================================================== */
 const DPM_TENANT = {
-  CLIENT_ID: "<<DPM Hub app registration client ID>>",   // Entra app "DPM Document Management Hub" - README step C
+  CLIENT_ID: "cfd8a964-d582-47e1-9174-ecd518cbc559",   // Entra app "DPM Document Management Hub" (Concept Group tenant)
   TENANT_ID: "ea9e105c-2df6-47ef-a8e3-b4aa1d788423",     // Concept Group
   SP_HOST:   "conceptcompg.sharepoint.com",
   SITE_PATH: "/sites/DPM"
