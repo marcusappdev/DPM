@@ -1305,6 +1305,7 @@ function applyRead(pg, f){
     const tots = [co.totalGross, co.totalTax, co.totalNet, ed.b.CoverGross, ed.b.CoverTax, ed.b.CoverNet].filter(v => v != null && v !== "").map(num);
     (co.otherAmounts || []).forEach(x => {
       if (x?.amount == null || tots.some(t => Math.abs(t - num(x.amount)) < 0.005)) return;
+      if (/budget|expenditure|spent|saving|allocation|ceiling|appropriation/i.test(x.where || "")) return;   // budget figures aren't claim totals
       const line = `${kina(x.amount)}${x.where ? " in the " + String(x.where).replace(/^the /i, "") : ""} of the ${pg.type}`;
       if (!lines(ed.b.CoverOtherAmounts).includes(line)){ ed.b.CoverOtherAmounts = [...lines(ed.b.CoverOtherAmounts), line].join("\n"); ed.auto.add("CoverOtherAmounts"); }
     });
@@ -1551,7 +1552,8 @@ function reviewText(){
   const b = ed.b, P = [], seen = new Set();
   const fld = (k, label) => { const v = b[k]; if (v === "" || v == null || seen.has(k)) return; seen.add(k); P.push(`${label}: ${NUMERIC.has(k) && !["NumberOfForms","CoverClaims"].includes(k) ? kina(v) : v}`); };
   P.push(`BATCH (entered in the Hub, today is ${TODAY})`);
-  fld("BatchKind", "Batch kind"); fld("AgencyName", "Agency"); fld("TransactionType", "Transaction type"); fld("ReceivedDate", "Received by DPM");
+  fld("BatchKind", "Batch kind"); fld("AgencyName", "Agency");
+  const ag = matchAgency(b.AgencyName); if (ag && lines(ag.Aliases).length) P.push(`The agency is also known as: ${lines(ag.Aliases).filter(x => !/batch/i.test(x)).join("; ")} - these are the same agency, not a mismatch`); fld("TransactionType", "Transaction type"); fld("ReceivedDate", "Received by DPM");
   CTL.concat(SUM, COVER, BUDGET).forEach(([k, label]) => { if (!["AgencyName","TransactionType","ReceivedDate"].includes(k)) fld(k, label); });
   fld("CoverOtherAmounts", "Other amounts on the cover"); fld("BatchNotes", "Notes");
   P.push("", `PAYMENT LINES (${ed.lines.length})`);
