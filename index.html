@@ -1138,8 +1138,8 @@ async function pageTurn(p){
   if (!r.ok) throw new Error(r.status === 401 ? "the reading service didn't accept your sign-in" : r.status === 429 ? "too many pages at once - wait a moment" : j.error || `reading service error ${r.status}`);
   return { top:0, right:270, bottom:180, left:90 }[j.fields?.textTop] || 0;   // degrees to turn clockwise
 }
-async function callReader(pg){
-  const r = await callAws(JSON.stringify({ image: (await uprightImage(pg)).split(",")[1], format:"jpeg", schema: readSchema(), instructions: readInstructions(pg) }));
+async function callReader(pg, strong = false){
+  const r = await callAws(JSON.stringify({ image: (await uprightImage(pg)).split(",")[1], format:"jpeg", schema: readSchema(), instructions: readInstructions(pg), ...(strong ? { strong:true } : {}) }));
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(r.status === 401 ? "the reading service didn't accept your sign-in" : r.status === 429 ? "too many pages at once - wait a moment" : j.error || j.message || `reading service error ${r.status}`);
   return j.fields || {};
@@ -1474,6 +1474,23 @@ async function readPages(idx){
         p.rot = best.rot; f = best.f;
         sc.notes.push(best.rot !== start ? `Page ${p.n}: the figures only add up with the page turned - turned and read again` : `Page ${p.n}: net = gross - tax fails on most lines, whichever way the page is turned - check this page by hand`);
       }
+      // second look: a schedule with lines that still don't add up is read again by the stronger model (Sonnet);
+      // keep whichever reading adds up better, or take the stronger model's figures for the lines that failed
+      if (lineSense(f) < 1 && (f.summary?.lines || []).length >= 2){
+        sc.busyText = `Page ${p.n}: some lines don't add up - taking a second look…`; keepScroll(render);
+        try {
+          const g = await callReader(p, true), fs = lineSense(f), gs = lineSense(g);
+          const ok = x => Math.abs(num(x.gross) - num(x.tax) - num(x.net)) <= 0.05;
+          if (gs > fs){ f = g; sc.notes.push(`Page ${p.n}: some lines didn't add up - a second look (stronger model) read them better; check the highlighted lines`); }
+          else {
+            let fixed = 0;
+            f.summary.lines = f.summary.lines.map(x => { if (ok(x)) return x;
+              const y = (g.summary?.lines || []).find(z => (x.employeeNo && empKey(z.employeeNo) === empKey(x.employeeNo)) || (x.employeeName && norm(z.employeeName) === norm(x.employeeName)));
+              if (y && ok(y)){ fixed++; return { ...x, gross:y.gross, tax:y.tax, net:y.net }; } return x; });
+            if (fixed) sc.notes.push(`Page ${p.n}: ${fixed} line(s) didn't add up - figures taken from a second look (stronger model); check them`);
+          }
+        } catch(e){ sc.notes.push(`Page ${p.n}: the second look didn't run (${e.message})`); }
+      }
       // reading a page again replaces the lines it filled last time (unless someone has edited them)
       if (p.readBefore){
         const gone = ed.lines.filter(l => l._fromPage === p.n && !l._edited && !l.id);
@@ -1547,7 +1564,8 @@ function reviewText(){
   const rd = readDataOf(b);
   if (rd.length){ P.push("", "WHAT WAS READ FROM EACH SCANNED PAGE (JSON per page)"); rd.forEach(x => P.push(`Page ${x.page} - ${x.type}${x.employee ? " - employee " + x.employee : ""}: ${JSON.stringify(x.read)}`)); }
   else P.push("", "No scanned pages were read for this batch - review what was entered.");
-  const nt = lines(b.ReadNotes); if (nt.length) P.push("", "NOTES MADE WHILE READING", ...nt.map(n => "- " + n));
+  // notes about turning pages are about the scanning, not the claims - leave them out
+  const nt = lines(b.ReadNotes).filter(n => !/turned|sideways|upside down|second look/i.test(n)); if (nt.length) P.push("", "NOTES MADE WHILE READING", ...nt.map(n => "- " + n));
   const docs = (ed.docs || []).map(d => d.DocumentType).filter(Boolean); if (docs.length) P.push("", `DOCUMENTS FILED: ${docs.join(", ")}`);
   return P.join("\n");
 }
@@ -1571,7 +1589,7 @@ List what should be queried that the automatic checks do NOT already show. Look 
 - matters listed on a minute or Reference Form A that aren't in the pack, or documents the transaction type normally needs that are missing
 - claims marked PAID, possible double payments, the same person under two numbers, agency names that differ
 - budget figures that disagree, or an agency already over its PE budget
-Rules: be specific - give the figures, the documents and the pages. Say "check" or "may" where you're not sure; never invent a figure that isn't below. Ignore differences under K0.05. At most 12 points, most important first, each under 60 words. If there is nothing to query, return no findings.`;
+Rules: be specific - give the figures, the documents and the pages. Compare every date with today's date before writing about it. Leave out any point you work through and find is fine - never write "wait" or correct yourself in a point. How the pages were scanned or turned is not a point to raise. Say "check" or "may" where you're not sure; never invent a figure that isn't below. Ignore differences under K0.05. At most 12 points, most important first, each under 60 words. If there is nothing to query, return no findings.`;
 async function reviewBatch(){
   if (!canReview() || ed.revBusy) return;
   if (!ed.lines.some(l => num(l.Gross) > 0) && !readDataOf(ed.b).length) return tell("Enter the payment lines, or read the scan, first.", { title:"Review the batch" });

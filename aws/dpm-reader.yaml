@@ -116,8 +116,9 @@ Resources:
                       return reply(400, {"error": "The page image must be a JPEG or PNG under 3.7 MB"})
                   schema = req["schema"]
                   text = str(req.get("instructions") or "Read this page.")[:8000]
+                  model = REVIEW_MODEL if req.get("strong") else MODEL     # "second look" at a page whose sums failed
                   res = br.converse(
-                      modelId=MODEL,
+                      modelId=model,
                       system=[{"text": SYSTEM}],
                       messages=[{"role": "user", "content": [
                           {"image": {"format": fmt, "source": {"bytes": img}}}, {"text": text}]}],
@@ -129,7 +130,7 @@ Resources:
                   fields = next((c["toolUse"]["input"] for c in res["output"]["message"]["content"] if "toolUse" in c), None)
                   u = res.get("usage", {})
                   print(json.dumps({"read": True, "in": u.get("inputTokens"), "out": u.get("outputTokens")}))
-                  return reply(200, {"fields": fields, "model": MODEL,
+                  return reply(200, {"fields": fields, "model": model,
                                      "usage": {"input": u.get("inputTokens"), "output": u.get("outputTokens")}})
               except KeyError as e:
                   return reply(400, {"error": f"missing {e}"})
