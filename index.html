@@ -1368,7 +1368,7 @@ function scanTopHtml(){
         <button class="btn" id="scClear" ${sc.busy ? "disabled" : ""}>Clear</button>` : ""}
       <span class="grow"></span><span class="note">${on ? `Read automatically: <b>${esc(setting("ReadAutomatically"))}</b>` : "Read automatically is off"}</span></div>
     ${sc.busyText ? `<p class="note"><b>${esc(sc.busyText)}</b></p>` : ""}
-    ${sc.notes.length ? `<div class="readnotes"><b>Check these against the scan:</b><ul>${sc.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}
+    ${sc.notes.length ? `<p class="note" style="margin:0 0 10px">${sc.notes.length} note(s) from reading the scan - <a href="#" id="toNotes">check them against the pages</a> (under Points to query).</p>` : ""}
     <div class="strip">${pages.map((p, i) => `<div class="pg ${sc.view === i ? "on" : ""}">
         <img src="${p.thumb}" data-view="${i}" alt="Page ${p.n}" style="transform:rotate(${p.rot}deg)" title="Show this page">
         <div class="pgn"><span>Page ${p.n}</span>${st(p)}</div>
@@ -1421,6 +1421,7 @@ function bindScan(){
     const r = e.target.closest("[data-read]"); if (r){ await readPages([+r.dataset.read]); return; }
     if (e.target.id === "scAll") await readPages(sc.pages.map((p, i) => p.status === "read" ? -1 : i).filter(i => i >= 0));
     if (e.target.id === "scFile") await fileScan();
+    if (e.target.id === "toNotes"){ e.preventDefault(); const d = $("details.rn"); if (d){ d.open = true; d.scrollIntoView({ behavior:"smooth", block:"start" }); } }
     if (e.target.id === "scClear" && await ask("Remove the loaded pages from this screen?\nDocuments already filed stay in SharePoint.", { title:"Clear the scan", ok:"Remove pages", danger:true })){ ed.scan = newScan(); keepScroll(render); }
   });
   sec.addEventListener("change", async e => {
