@@ -1045,7 +1045,8 @@ function readSchema(){
       totalGross:sN(), totalTax:sN(), totalNet:sN(), agencyClaimedGross:sN("only when the page ALSO shows the agency's own claimed total, separate from the DPM validated figures"),
       lines:{ type:"array", items: obj({ employeeNo:sS(), employeeName:sS(), natureOfClaim:sS("e.g. Deceased, Resignation"), paymentCategory:sS("e.g. MILOL, MILOL + MILOF"),
         periodFrom:sS(), periodTo:sS(), periodAsWritten:sS(), fortnights:sN(), gross:sN(), tax:sN(), net:sN(), taxRateStatedPct:sN("tax % written in the remarks, e.g. Marginal Tax @ 40% -> 40"),
-        remarks:sS(), markedPaid:sB("true if 'Paid' has been handwritten or ticked against this employee") }) } }),
+        remarks:sS(), markedPaid:sB("true if 'Paid' has been handwritten or ticked against this employee") }) },
+      pageMarkedPaid:sB("true if 'PAID' is handwritten or stamped on the page as a whole (e.g. across the top of a schedule) - it applies to every row on the page") }),
     paymentForm: obj({ employeeNo:sS("Employee Selection #: written ONE character per box, normally 8 boxes - read each box separately, left to right, and keep leading zeros"),
       employeeNumberBoxes:{ type:["array","null"], items:{ type:"string" }, description:"the Employee Selection # box by box, one character per item, exactly as written" },
       employeeName:sS("Surname & Other Name, letter by letter as written"), department:sS(), reason:sS(), periodEndDate:sS("from the Period End Date boxes (day, month, year)"),
@@ -1110,6 +1111,23 @@ async function callAws(body){
   let r = await send(false);
   if (r.status === 401 && !DEMO) r = await send(true);
   return r;
+}
+// Which way is the page turned? A quick question on a small copy of the page, before reading it.
+// (Asked on its own because, while reading, the model will happily read a sideways table - badly.)
+async function smallImage(p, max = 900){
+  const src = await uprightImage(p);
+  const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error("couldn't open the page")); i.src = src; });
+  const k = Math.min(1, max / Math.max(img.width, img.height)), c = whiteCanvas(img.width * k, img.height * k);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); return c.toDataURL("image/jpeg", 0.8);
+}
+async function pageTurn(p){
+  const r = await callAws(JSON.stringify({ image:(await smallImage(p)).split(",")[1], format:"jpeg",
+    schema:{ type:"object", required:["textTop"], properties:{ textTop:{ type:"string", enum:["top","right","bottom","left"],
+      description:"which edge of the image the TOP of the writing points to. Normal upright page = top. Upside down = bottom. Writing running up the page from bottom to top = left; running down the page from top to bottom = right." } } },
+    instructions:"Look only at which way the printed writing on this page runs - the main title and the table headings. Don't read the content." }));
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(r.status === 401 ? "the reading service didn't accept your sign-in" : r.status === 429 ? "too many pages at once - wait a moment" : j.error || `reading service error ${r.status}`);
+  return { top:0, right:270, bottom:180, left:90 }[j.fields?.textTop] || 0;   // degrees to turn clockwise
 }
 async function callReader(pg){
   const r = await callAws(JSON.stringify({ image: (await uprightImage(pg)).split(",")[1], format:"jpeg", schema: readSchema(), instructions: readInstructions(pg) }));
@@ -1179,7 +1197,20 @@ function applyRead(pg, f){
     setB("DPMRegion", su.dpmRegionOrBranch); setB("SummaryRef", su.summaryRef);
     [["SummaryPreparedBy", su.preparedBy], ["SummaryCheckedBy", su.checkedBy], ["SummaryValidatedBy", su.validatedBy], ["SummaryCertifiedBy", su.certifiedBy]].forEach(([k, v]) => setB(k, v));
     [["SummaryPreparedDate", su.preparedDate, "prepared date"], ["SummaryCheckedDate", su.checkedDate, "checked date"], ["SummaryValidatedDate", su.validatedDate, "validated date"], ["SummaryCertifiedDate", su.certifiedDate, "certified date"]].forEach(([k, v, w]) => setB(k, toDate(v, notes, `${P} ${w}`)));
-    ["TotalGross","TotalTax","TotalNet","AgencyClaimedGross"].forEach((k, i) => { const v = [su.totalGross, su.totalTax, su.totalNet, su.agencyClaimedGross][i]; if (v != null) setB(k, v); });
+    // A pack can hold more than one schedule, each with its own totals: a different schedule's totals are added
+    // to those read so far (a repeated copy of the same summary gives the same totals and changes nothing)
+    const tv = [su.totalGross, su.totalTax, su.totalNet];
+    const repeat = (ed.sumSeen || []).some(g => tv[0] != null && Math.abs(g - num(tv[0])) < 0.005);
+    if (repeat && tv[0] != null) notes.push(`${P}: the same schedule totals as an earlier page (gross ${kina(tv[0])}) - a repeated copy, not added again`);
+    const fromOther = !repeat && tv.some(v => v != null) && ed.sumPages?.length && !ed.sumPages.includes(pg.n) && ["TotalGross","TotalTax","TotalNet"].every(k => ed.auto.has(k) || ed.b[k] === "" || ed.b[k] == null)
+      && ["TotalGross","TotalTax","TotalNet"].some((k, i) => tv[i] != null && Math.abs(num(ed.b[k]) - num(tv[i])) > 0.005);
+    if (fromOther){
+      ["TotalGross","TotalTax","TotalNet"].forEach((k, i) => { if (tv[i] != null){ ed.b[k] = r2(num(ed.b[k]) + num(tv[i])); ed.auto.add(k); } });
+      notes.push(`${P}: a second schedule with its own totals (gross ${kina(tv[0])}) - added to the summary totals, now gross ${kina(ed.b.TotalGross)}; check it`);
+    } else if (!repeat) ["TotalGross","TotalTax","TotalNet"].forEach((k, i) => { if (tv[i] != null) setB(k, tv[i]); });
+    if (tv[0] != null && !repeat) (ed.sumSeen ||= []).push(num(tv[0]));
+    if (su.agencyClaimedGross != null) setB("AgencyClaimedGross", su.agencyClaimedGross);
+    if (tv.some(v => v != null)) (ed.sumPages ||= []).push(pg.n);
     (su.lines || []).forEach(x => {
       if (!x.employeeNo && !x.employeeName) return;
       const l = lineFor(x.employeeNo, x.employeeName);
@@ -1188,7 +1219,7 @@ function applyRead(pg, f){
       setL(l, "PaymentCategory", x.paymentCategory); setL(l, "PeriodFrom", toDate(x.periodFrom, notes, `${P} ${x.employeeName || ""} period from`)); setL(l, "PeriodTo", toDate(x.periodTo, notes, `${P} ${x.employeeName || ""} period to`));
       setL(l, "PeriodText", x.periodAsWritten); setL(l, "Fortnights", x.fortnights); setL(l, "Gross", x.gross); setL(l, "Tax", x.tax); setL(l, "Net", x.net);
       setL(l, "StatedTaxPct", x.taxRateStatedPct); setL(l, "Remarks", x.remarks);
-      if (x.markedPaid){ l.MarkedPaid = true; l._auto.add("MarkedPaid"); notes.push(`${P}: "Paid" is marked against ${x.employeeName || x.employeeNo} - line held`); }
+      if (x.markedPaid || su.pageMarkedPaid){ l.MarkedPaid = true; l._auto.add("MarkedPaid"); notes.push(`${P}: "Paid" is marked against ${x.employeeName || x.employeeNo} - line held`); }
     });
   }
   if (pf && pg.type === "Special Offline Payment Form"){
@@ -1396,11 +1427,16 @@ async function readPages(idx){
   for (const i of idx){
     const p = sc.pages[i]; p.status = "reading"; sc.busyText = `Reading page ${p.n} (${ok + bad + 1} of ${idx.length})…`; keepScroll(render);
     try {
+      // turn the page the right way up first, unless someone has already turned it by hand
+      if (!p.rot && !p.checkedTurn){
+        p.checkedTurn = true; const t = await pageTurn(p);
+        if (t){ p.rot = t; p.turned = true; sc.notes.push(`Page ${p.n}: scanned ${t === 180 ? "upside down" : "sideways"} - turned before reading`); sc.busyText = `Reading page ${p.n} (turned the right way up)…`; keepScroll(render); }
+      }
       let f = await callReader(p);
       let turn = [90, 180, 270].includes(f.upright) ? f.upright : 0;
       if (!turn && (f.unclear || []).some(u => /upside[ -]?down|inverted/i.test(u))) turn = 180;
-      if (turn && !p.turned){
-        p.rot = (p.rot + turn) % 360; p.turned = true;
+      if (turn && !p.reTurned){
+        p.rot = (p.rot + turn) % 360; p.turned = p.reTurned = true;
         sc.busyText = `Page ${p.n} was scanned ${turn === 180 ? "upside down" : "sideways"} - turning it and reading again…`; keepScroll(render);
         f = await callReader(p); sc.notes.push(`Page ${p.n}: scanned ${turn === 180 ? "upside down" : "sideways"} - turned and read again`);
       }
