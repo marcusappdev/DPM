@@ -1074,14 +1074,15 @@ function readInstructions(pg){
 First fill "upright": look at which way the text runs before reading anything else.
 Fill ONLY the section for that kind of document and leave the other sections out:
 - Batch Control Form (cover sheet listing the type of form ticked, pay no, number of forms) -> batchControl
-- DPM Validated Summary: ANY table listing several employees with gross, tax and net - a summary, costing, schedule, "compliance and calculation schedule", or a continuation page of one, even if stamped or marked PAID -> summary, one entry in "lines" for EVERY employee row on the page
+- DPM Validated Summary: ANY table listing several employees with gross, tax and net amounts - a summary, costing, schedule, "compliance and calculation schedule", or a continuation page of one, even if it is headed "Agency: ..." or stamped or marked PAID -> summary, one entry in "lines" for EVERY employee row on the page
 - Special Offline Payment Form (pink form for ONE employee, with pay code lines) -> paymentForm
 - Gratuity, Higher Duties or Final Entitlements calculation sheet: the working for ONE employee -> calculation (the employee's final totals)
 - DPM Minute (internal, action or compliance minute), Endorsement Letter (Secretary's letter to an agency endorsing claims) or Reference Form A (the small routing slip titled REFERENCE FORM "A" with To, Date, Document(s) and Subject boxes) -> cover
 - A page carrying only a stamp, signature or note (e.g. "VERIFIED BY ... DATE ...") -> Other Supporting Document, nothing else
 - PE & Budget Dashboard (Power BI "Public Service PE & Budget Monitoring Dashboard" printout) -> budget
 - Employment Contract: the page with the salary, allowances and Contract Gratuity -> contract; other contract pages -> only documentType
-- Agency Schedule or anything else -> only documentType
+- Agency Schedule: a list of employees WITHOUT gross / tax / net amounts (names, designations, grades) -> only documentType
+- Anything else -> only documentType
 Always fill "upright".
 On a minute or letter copy every figure exactly as written, even if it looks wrong - the Hub checks them.
 If a summary page shows both an agency claim table and a DPM validated table, use the DPM validated figures for the lines and put the agency's claimed total gross in agencyClaimedGross.
@@ -1191,6 +1192,8 @@ function applyRead(pg, f){
     setB("RaisedByPhone", bc.telephone); setB("RaisedDate", toDate(bc.dateRaised, notes, `${P} date raised`)); setB("PAOfficer", bc.publicAccountsOfficer);
     setB("PADate", toDate(bc.publicAccountsDate, notes, `${P} public accounts date`)); if (bc.publicAccountsStamp != null) setB("PAStamped", bc.publicAccountsStamp ? "Yes" : "No");
   }
+  // a table of employees with amounts is read as a summary even when it's been called an Agency Schedule
+  if (su && pg.type === "Agency Schedule" && (su.lines || []).some(x => x.gross != null)){ pg.type = "DPM Validated Summary"; notes.push(`${P}: a schedule of employees with amounts - read as a summary`); }
   if (su && pg.type === "DPM Validated Summary"){
     setAgency(su.agency);
     if (su.transactionType){ const t = matchTType(su.transactionType); if (t) setB("TransactionType", t); else notes.push(`${P}: transaction type "${su.transactionType}" isn't in the list - choose it by hand`); }
