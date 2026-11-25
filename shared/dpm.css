@@ -3,7 +3,7 @@
    Taken from the MJE Hubs stylesheet (same classes), with DPM colours.
    ===================================================================== */
 :root{
-  --bg:#f4f5f7;--surface:#fff;--surface2:#f9fafb;--text:#1b1f24;--muted:#5f6b7a;--line:#e3e6ea;
+  --bg:#e9edf2;--surface:#fff;--surface2:#f9fafb;--text:#1b1f24;--muted:#5f6b7a;--line:#e3e6ea;
   --brand:#0f2a44;--accent:#c8962e;--accent-ink:#0f2a44;
   --ok:#1f8a4c;--warn:#b7791f;--bad:#c2410c;--crit:#b91c1c;--info:#2563eb;
   --ok-bg:#e7f5ed;--warn-bg:#fdf3e1;--bad-bg:#fdece4;--info-bg:#e8effd;--grey-bg:#eef0f3;

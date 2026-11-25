@@ -8,15 +8,20 @@
 <link rel="apple-touch-icon" href="shared/dpm-icon.png">
 <title>DPM Document Management Hub</title>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
-<link rel="stylesheet" href="shared/dpm.css?v=20261122">
+<link rel="stylesheet" href="shared/dpm.css?v=20261125a">
 <style>
 /* DPM Hub only - shared look is in shared/dpm.css */
 .logo .chip img{height:34px}
 .signin .crest{width:170px;height:auto;display:block;margin:0 auto 10px}
 .logo small{display:block;font-weight:400;font-size:11px;color:#c9d1db;letter-spacing:.2px}
 header .rolesel{background:#1d3550;color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:4px 6px;font-size:12px}
-.sec{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--sc,var(--accent));border-radius:var(--r);padding:14px 16px;margin-bottom:16px;box-shadow:var(--shadow)}
-.sec > h3{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:.4px;color:var(--sc,var(--accent))}
+/* Panels: white on a grey page, a tinted heading band in the panel's colour, more room between them */
+.sec{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--sc,var(--accent));border-radius:var(--r);padding:0 18px 18px;margin-bottom:22px;
+  box-shadow:0 1px 2px rgba(16,24,40,.06),0 4px 14px rgba(16,24,40,.07);overflow:hidden}
+.sec > h3{margin:0 -18px 16px;padding:11px 18px;font-size:13px;text-transform:uppercase;letter-spacing:.4px;color:var(--sc,var(--accent));
+  background:color-mix(in srgb, var(--sc,var(--accent)) 8%, var(--surface));border-bottom:1px solid color-mix(in srgb, var(--sc,var(--accent)) 18%, var(--line))}
+.sec.scantop{padding-top:14px}
+
 .sec.s-rev{--sc:#9333ea}.sec.s-bud{--sc:#0e7490}.sec.s-ctl{--sc:#1d4e89}.sec.s-sum{--sc:#0f8a80}.sec.s-lines{--sc:#7c3aed}.sec.s-docs{--sc:#b45309}.sec.s-chk{--sc:#b91c1c}.sec.s-hist{--sc:#64748b}
 @media (prefers-color-scheme:dark){.sec.s-rev{--sc:#c084fc}.sec.s-bud{--sc:#38bdf8}.sec.s-ctl{--sc:#6f9bf5}.sec.s-sum{--sc:#3cc2b6}.sec.s-lines{--sc:#a98bf5}.sec.s-docs{--sc:#eaa24f}.sec.s-chk{--sc:#f87171}.sec.s-hist{--sc:#98a2b0}}
 .edhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
@@ -100,8 +105,8 @@ body.scanmode main{max-width:none}
 .strip .pg img{height:120px}
 .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,44%);gap:16px;align-items:stretch}
 .split .left{min-width:0}
-.viewpane{position:sticky;top:84px;height:calc(100vh - 100px);display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
-.viewpane .vh{display:flex;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px;flex-wrap:wrap}
+.viewpane{position:sticky;top:84px;height:calc(100vh - 100px);display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:0 1px 2px rgba(16,24,40,.06),0 4px 14px rgba(16,24,40,.07)}
+.viewpane .vh{display:flex;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px;flex-wrap:wrap;background:var(--surface2)}
 .viewpane .vh .grow{flex:1}
 .viewpane .vb{flex:1;overflow:auto;background:#525659;display:flex;justify-content:center;align-items:flex-start;padding:12px}
 .viewpane img{max-width:100%;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.45)}
@@ -118,13 +123,14 @@ body.scanmode main{max-width:none}
 .scanbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 .scanbar label.btn{cursor:pointer}
 .pages{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:12px}
-.pg{border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--surface2);display:flex;flex-direction:column;gap:6px}
+.pg{border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--surface);display:flex;flex-direction:column;gap:6px;box-shadow:0 1px 3px rgba(16,24,40,.08)}
+.pg img{background:var(--surface2);border-radius:6px}
 .pg.on{outline:3px solid var(--accent);outline-offset:1px}
 .pg img{width:100%;height:200px;object-fit:contain;background:#fff;border-radius:6px;cursor:zoom-in;border:1px solid var(--line)}
 .pg select{font-size:12px;padding:4px;border:1px solid var(--line);border-radius:6px;background:var(--surface);width:100%}
 .pg .pgn{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;font-weight:650}
 .btn.sm{padding:4px 10px;font-size:12px}
-input.auto,select.auto,textarea.auto{background:#fff4cc!important;border-color:#d4a017!important}
+input.auto,select.auto,textarea.auto{background:#fffaeb!important;border-color:#e0b64a!important;box-shadow:inset 3px 0 0 #e0b64a}
 @media (prefers-color-scheme:dark){input.auto,select.auto,textarea.auto{background:#3d3210!important}}
 .readnotes{background:var(--warn-bg);border-radius:8px;padding:8px 14px;margin:0 0 12px;font-size:13px}
 .readnotes ul{margin:4px 0 0;padding-left:18px}
