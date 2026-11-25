@@ -65,6 +65,24 @@ A web page can't drive a scanner. Scan the whole batch to a PDF with the scanner
   - The gratuity on an employment contract is compared with the amount claimed.
 - **File documents:** each run of pages with the same document type and employee is saved as one PDF in `DPM_BatchDocuments/<Agency>/<Batch Ref>/`, with its details. The complete scan can be kept as well.
 
+## Review the batch
+
+When the Hub's AWS service is switched on, **Review the batch** (under Checks) sends the whole batch to Claude Sonnet as text, with no page images. That covers what was entered, the payment lines, the Hub's own checks, and what was read from every scanned page. Claude replies with a short list of points to query that the fixed checks can't catch, for example:
+
+- figures that disagree between the letter, the schedules, the pink forms and the calculations;
+- dates out of order;
+- final entitlements worked out at today's salary rather than the salary on the date someone left;
+- a gratuity basis or period that doesn't match the contract;
+- matters on a minute that aren't in the pack.
+
+Each point is marked **Query**, **Check** or **Note** and names the documents and pages. The list:
+
+- is saved with the batch (`ReviewFindings`) and recorded in its history;
+- can be copied for an email to the agency;
+- adds its *Query* points to the rejection reasons.
+
+It's advice for the Checker only: nothing is accepted or rejected automatically. The notes made while reading the scan (`ReadNotes`) and what was read from each page (`ReadData`) are also kept on the batch, so a review can be run later.
+
 ## Connecting to SharePoint
 
 1. Run the setup kit on the site (see its README).

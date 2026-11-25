@@ -17,8 +17,8 @@
 header .rolesel{background:#1d3550;color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:4px 6px;font-size:12px}
 .sec{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--sc,var(--accent));border-radius:var(--r);padding:14px 16px;margin-bottom:16px;box-shadow:var(--shadow)}
 .sec > h3{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:.4px;color:var(--sc,var(--accent))}
-.sec.s-bud{--sc:#0e7490}.sec.s-ctl{--sc:#1d4e89}.sec.s-sum{--sc:#0f8a80}.sec.s-lines{--sc:#7c3aed}.sec.s-docs{--sc:#b45309}.sec.s-chk{--sc:#b91c1c}.sec.s-hist{--sc:#64748b}
-@media (prefers-color-scheme:dark){.sec.s-bud{--sc:#38bdf8}.sec.s-ctl{--sc:#6f9bf5}.sec.s-sum{--sc:#3cc2b6}.sec.s-lines{--sc:#a98bf5}.sec.s-docs{--sc:#eaa24f}.sec.s-chk{--sc:#f87171}.sec.s-hist{--sc:#98a2b0}}
+.sec.s-rev{--sc:#9333ea}.sec.s-bud{--sc:#0e7490}.sec.s-ctl{--sc:#1d4e89}.sec.s-sum{--sc:#0f8a80}.sec.s-lines{--sc:#7c3aed}.sec.s-docs{--sc:#b45309}.sec.s-chk{--sc:#b91c1c}.sec.s-hist{--sc:#64748b}
+@media (prefers-color-scheme:dark){.sec.s-rev{--sc:#c084fc}.sec.s-bud{--sc:#38bdf8}.sec.s-ctl{--sc:#6f9bf5}.sec.s-sum{--sc:#3cc2b6}.sec.s-lines{--sc:#a98bf5}.sec.s-docs{--sc:#eaa24f}.sec.s-chk{--sc:#f87171}.sec.s-hist{--sc:#98a2b0}}
 .edhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .edhead h2{font-size:20px}
 .edhead .sub{color:var(--muted);font-size:13px}
@@ -44,6 +44,10 @@ header .rolesel{background:#1d3550;color:#fff;border:1px solid rgba(255,255,255,
 .chk .tag{flex:none;font-size:11px;font-weight:700;border-radius:5px;padding:1px 7px;text-transform:uppercase}
 .chk .e .tag{background:var(--bad-bg);color:var(--crit)}
 .chk .w .tag{background:var(--warn-bg);color:var(--warn)}
+.chk .n .tag{background:var(--line);color:var(--muted,#64748b)}
+.chk .docref{font-size:12px;color:var(--muted,#64748b);margin-top:2px}
+.revbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+details.rn{margin-top:14px;font-size:13px}details.rn ul{margin:6px 0 0;padding-left:18px}
 .chk .rule{font-weight:600}
 .okline{color:var(--ok);font-weight:600}
 .docs td{vertical-align:middle}
@@ -721,6 +725,7 @@ function renderEditor(banner){
       ${can ? `<div style="margin-top:10px"><button class="btn" id="addLn">+ Add line</button> <span class="note">Tick <b>Pink ✓</b> when the employee's Special Offline Payment Form is in the batch and matches. Tick <b>Paid?</b> if someone has written "Paid" on it.</span></div>` : ""}</div>
     </div>
     <div class="sec s-chk" id="chkSec">${isMigrated(b) ? migratedFlagsHtml() : quietChecks() ? quietChecksHtml() : checksHtml(checks)}</div>
+    ${reviewShown() ? `<div class="sec s-rev" id="revSec">${reviewHtml()}</div>` : ""}
     <div class="sec s-docs"><h3>4 · ${scanMode ? "Filed documents" : "Documents"}</h3><div id="docBox">${docsHtml()}</div>
       ${!scanMode && canEnter() && !["Accepted","Superseded"].includes(b.BatchStatus) ? `<p class="note" style="margin-top:12px">Have the scanned batch? <button class="btn sm" id="toScan">Open the scan beside this form</button></p>` : ""}</div>
     ${events.length ? `<div class="sec s-hist"><h3>History</h3><ul class="list hist">${events.map(e => `<li><span class="id mono">${esc(String(e.EventOn || "").replace("T", " "))}</span><span class="x"><b>${esc(e.EventType)}</b> - ${esc(e.EventBy)}${e.Details ? `<div class="note" style="white-space:pre-wrap">${esc(e.Details)}</div>` : ""}</span></li>`).join("")}</ul></div>` : ""}
@@ -781,6 +786,7 @@ function refreshChecks(){
   const own = norm(ed.b.EnteredBy) && norm(ed.b.EnteredBy) === norm(me.name);
   $("#actNote").textContent = actionNote(errs.length, own);
   const sub = $("#aSubmit"); if (sub) sub.disabled = !!errs.length;
+  if (!$("#revSec") && reviewShown()){ $("#chkSec").insertAdjacentHTML("afterend", `<div class="sec s-rev" id="revSec">${reviewHtml()}</div>`); bindReview(); }
   const acc = $("#aAccept"); if (acc) acc.disabled = !!errs.length || own;
 }
 function bindEditor(){
@@ -811,7 +817,7 @@ function bindEditor(){
   $("#aReject")?.addEventListener("click", rejectDialog);
   $("#aReturn")?.addEventListener("click", async () => { ed.b.ReturnedDate = TODAY; await saveBatch("Returned to agency", { event:"Returned to agency" }); });
   $("#aResub")?.addEventListener("click", startResubmission);
-  bindDocs(); bindScan();
+  bindDocs(); bindScan(); bindReview();
   $("#toScan")?.addEventListener("click", () => { ed.mode = "scan"; render(); scrollTo(0, 0); });
 }
 
@@ -839,7 +845,8 @@ const B_FIELDS = ["AgencyName","BatchNumber","PayNo","PayDate","FormType","Numbe
   "TransactionType","DPMRegion","SummaryRef","SummaryPreparedBy","SummaryPreparedDate","SummaryCheckedBy","SummaryCheckedDate","SummaryValidatedBy","SummaryValidatedDate","SummaryCertifiedBy","SummaryCertifiedDate",
   "TotalGross","TotalTax","TotalNet","AgencyClaimedGross","ReceivedDate","BatchStatus",
   "BatchKind","CoverType","CoverRef","CoverDate","CoverFrom","CoverClaims","CoverGross","CoverTax","CoverNet","CoverOtherAmounts",
-  "BudgetLabel","BudgetPayNo","BudgetAmount","BudgetSpent","BudgetForecast","BudgetPrinted","RejectionReasons","ReturnedDate","ResubmissionOf","EnteredBy","EnteredDate","VerifiedBy","VerifiedDate","AcceptedBy","AcceptedDate","CaptureMethod","BatchNotes"];
+  "BudgetLabel","BudgetPayNo","BudgetAmount","BudgetSpent","BudgetForecast","BudgetPrinted",
+  "ReadNotes","ReadData","ReviewFindings","ReviewedOn","ReviewedBy","RejectionReasons","ReturnedDate","ResubmissionOf","EnteredBy","EnteredDate","VerifiedBy","VerifiedDate","AcceptedBy","AcceptedDate","CaptureMethod","BatchNotes"];
 const L_FIELDS = ["EmployeeNo","EmployeeName","NatureOfClaim","PaymentCategory","PayCode","PeriodFrom","PeriodTo","PeriodText","Fortnights","Gross","Tax","Net","StatedTaxPct","PinkFormMatched","Remarks","AgencyClaimedGross","AgencyClaimedTax","AgencyClaimedNet","Designation","GradeStep","Reason","PeriodEndDate"];
 const NUMERIC = new Set(["CoverClaims","CoverGross","CoverTax","CoverNet","BudgetAmount","BudgetSpent","BudgetForecast","NumberOfForms","TotalGross","TotalTax","TotalNet","AgencyClaimedGross","Fortnights","Gross","Tax","Net","StatedTaxPct","AgencyClaimedTax","AgencyClaimedNet","TaxRatePct","LineCount"]);
 function clean(obj, keys){ const o = {}; keys.forEach(k => { let v = obj[k]; if (v === undefined) return; if (NUMERIC.has(k)) v = v === "" || v == null ? null : num(v); else v = v == null ? "" : String(v); o[k] = v; }); return o; }
@@ -905,7 +912,7 @@ function rejectDialog(){
   const d = $("#dlg");
   d.innerHTML = `<div class="dh"><div class="dt"><span class="kind" style="background:var(--crit)">Reject batch</span><h2>${esc(ed.b.Title)}</h2></div></div>
     <div class="db"><p class="note">${setting("RejectWholeBatch", "Yes") === "Yes" ? "One bad form rejects the whole batch. " : ""}The reasons are kept on the batch, in its history and on the dashboard. Edit them as needed - one per line.</p>
-      <label class="fld"><span class="req">Reasons</span><textarea id="rjR" style="min-height:180px">${esc(errs.map(c => `[${c.rule}] - ${c.msg}`).join("\n"))}</textarea></label></div>
+      <label class="fld"><span class="req">Reasons</span><textarea id="rjR" style="min-height:180px">${esc([...errs.map(c => `[${c.rule}] - ${c.msg}`), ...(reviewData()?.findings || []).filter(f => f.severity === "Query").map(f => `[Review] - ${f.point}`)].join("\n"))}</textarea></label></div>
     <div class="df"><button class="btn" id="rjX">Cancel</button><button class="btn primary" id="rjS" style="background:var(--crit);border-color:var(--crit)">Reject batch</button></div>`;
   d.showModal();
   $("#rjX").onclick = () => d.close();
@@ -1374,16 +1381,119 @@ async function readPages(idx){
         sc.busyText = `Page ${p.n} was scanned ${turn === 180 ? "upside down" : "sideways"} - turning it and reading again…`; keepScroll(render);
         f = await callReader(p); sc.notes.push(`Page ${p.n}: scanned ${turn === 180 ? "upside down" : "sideways"} - turned and read again`);
       }
-      sc.notes.push(...applyRead(p, f)); p.status = "read"; p.note = ""; ok++; ed.dirty = true; }
+      sc.notes.push(...applyRead(p, f)); keepRead(p, f); p.status = "read"; p.note = ""; ok++; ed.dirty = true; }
     catch(e){ p.status = "error"; p.note = e.message; bad++; failed.push(`Page ${p.n}: ${e.message}`); }
   }
   sc.busy = false; sc.busyText = "";
   autoKind();
+  ed.b.ReadNotes = [...new Set([...lines(ed.b.ReadNotes), ...sc.notes])].join("\n");
   if (ok && ed.b.Title) logEvent(ed.b.Title, "Read automatically", `${ok} page(s) read${bad ? `, ${bad} failed` : ""}`);
   keepScroll(render);
   if (bad) showError(`${bad} page(s) couldn't be read`, { message: failed.join("\n") }, ok ? `${ok} page(s) were read - check their highlighted values. Press Read automatically on the others to try again.` : "Press Read automatically on a page to try again.");
   else toast(`${ok} page(s) read - check the highlighted values`);
 }
+/* =====================================================================
+   REVIEW THE BATCH - Claude (Sonnet, on Bedrock) looks across everything read from
+   every document and lists what a checker should query. Suggestions only: nothing is
+   decided automatically. Text only - no page images are sent.
+   ===================================================================== */
+// What was read from each page is kept on the batch (ReadData), so the review also works later
+const compact = v => {
+  if (Array.isArray(v)){ const a = v.map(compact).filter(x => x !== undefined); return a.length ? a : undefined; }
+  if (v && typeof v === "object"){ const o = {}; Object.entries(v).forEach(([k, x]) => { const c = compact(x); if (c !== undefined) o[k] = c; }); return Object.keys(o).length ? o : undefined; }
+  return v === null || v === "" ? undefined : v;
+};
+function readDataOf(b){ try { const d = JSON.parse(b.ReadData || "[]"); return Array.isArray(d) ? d : []; } catch { return []; } }
+function keepRead(p, f){
+  const key = `${p.file?.name || "scan"}|${p.n}`, f2 = compact({ ...f, upright: undefined }) || {};
+  const all = readDataOf(ed.b).filter(x => x.key !== key);
+  all.push({ key, page:p.n, type:p.type, employee:p.emp || undefined, read:f2 });
+  let json = JSON.stringify(all);
+  while (json.length > 60000 && all.length > 1){ all.shift(); json = JSON.stringify(all); }   // SharePoint text column limit
+  ed.b.ReadData = json;
+}
+function reviewData(){ try { const r = JSON.parse(ed.b.ReviewFindings || "null"); return r && Array.isArray(r.findings) ? r : null; } catch { return null; } }
+const canReview = () => readOn() && editable() && !isMigrated(ed.b);
+const reviewShown = () => !quietChecks() && (reviewData() || lines(ed.b.ReadNotes).length || canReview());
+function reviewHtml(){
+  const r = reviewData(), notes = lines(ed.b.ReadNotes), cls = { Query:"e", Check:"w", Note:"n" };
+  return `<h3>Points to query <span class="note" style="text-transform:none;letter-spacing:0;font-weight:400">Claude's review of the whole batch - suggestions for the Checker, not decisions</span></h3>
+    ${r ? `${r.summary ? `<p>${esc(r.summary)}</p>` : ""}<ul class="chk">${r.findings.map(f => `<li class="${cls[f.severity] || "w"}"><span class="tag">${esc(f.severity || "Check")}</span><span>${esc(f.point)}${f.documents ? `<div class="docref">${esc(f.documents)}</div>` : ""}</span></li>`).join("") || `<li><span class="okline">Nothing further to query.</span></li>`}</ul>
+      <p class="note" style="margin-top:8px">Reviewed ${esc(r.at || "")} by ${esc(r.by || "")}. ${ed.dirty ? " Save the batch to keep it." : " Saved with the batch."}</p>`
+    : `<p class="note">${canReview() ? "When the batch is entered or read from the scan, <b>Review the batch</b> asks Claude to look across every document for anything to query: figures that don't agree between documents, dates out of order, salaries, rates or periods that don't match the contract or the date someone left, and matters missing from the pack." : "Not reviewed."}</p>`}
+    <div class="revbar">${canReview() ? `<button class="btn primary" id="revGo" ${ed.revBusy ? "disabled" : ""}>${ed.revBusy ? "Reviewing… (up to 30 seconds)" : r ? "Review again" : "Review the batch"}</button>` : ""}
+      ${r && r.findings.length ? `<button class="btn" id="revCopy">Copy the list</button>` : ""}</div>
+    ${notes.length ? `<details class="rn"><summary>Notes from reading the scan (${notes.length})</summary><ul>${notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></details>` : ""}`;
+}
+function bindReview(){
+  $("#revGo")?.addEventListener("click", reviewBatch);
+  $("#revCopy")?.addEventListener("click", e => { const r = reviewData(); if (!r) return;
+    copyText(`${ed.b.Title || "New batch"} - ${ed.b.AgencyName || ""}\nPoints to query\n\n${r.findings.map((f, i) => `${i + 1}. ${f.point}${f.documents ? ` (${f.documents})` : ""}`).join("\n")}`, e.target); });
+}
+// Everything the Hub knows about the batch, as text
+function reviewText(){
+  const b = ed.b, P = [], seen = new Set();
+  const fld = (k, label) => { const v = b[k]; if (v === "" || v == null || seen.has(k)) return; seen.add(k); P.push(`${label}: ${NUMERIC.has(k) && !["NumberOfForms","CoverClaims"].includes(k) ? kina(v) : v}`); };
+  P.push(`BATCH (entered in the Hub, today is ${TODAY})`);
+  fld("BatchKind", "Batch kind"); fld("AgencyName", "Agency"); fld("TransactionType", "Transaction type"); fld("ReceivedDate", "Received by DPM");
+  CTL.concat(SUM, COVER, BUDGET).forEach(([k, label]) => { if (!["AgencyName","TransactionType","ReceivedDate"].includes(k)) fld(k, label); });
+  fld("CoverOtherAmounts", "Other amounts on the cover"); fld("BatchNotes", "Notes");
+  P.push("", `PAYMENT LINES (${ed.lines.length})`);
+  ed.lines.forEach((l, i) => P.push(`${i + 1}. ${[l.EmployeeNo, l.EmployeeName, l.NatureOfClaim, l.PayCode, l.PaymentCategory,
+    l.PeriodFrom ? `period ${l.PeriodFrom} to ${l.PeriodTo}` : l.PeriodText ? `period ${l.PeriodText}` : "", l.Fortnights !== "" && l.Fortnights != null ? `${l.Fortnights} fortnights` : "",
+    `gross ${kina(l.Gross)}`, `tax ${kina(l.Tax)}`, `net ${kina(l.Net)}`, l.PinkFormMatched === "Yes" ? "pink form matched" : "", l.MarkedPaid ? "marked PAID by hand" : "", l.PeriodEndDate ? `pink form period end ${l.PeriodEndDate}` : "", l.Reason ? `reason: ${l.Reason}` : "", l.Remarks ? `remarks: ${l.Remarks}` : ""].filter(Boolean).join(" | ")}`));
+  P.push(`Totals of the lines: gross ${kina(sumOf(ed.lines, "Gross"))}, tax ${kina(sumOf(ed.lines, "Tax"))}, net ${kina(sumOf(ed.lines, "Net"))}`);
+  const checks = checkBatch(b, ed.lines, ed.docs).filter(c => c.rule !== "Read automatically");
+  P.push("", "THE HUB'S AUTOMATIC CHECKS ALREADY SHOW (don't repeat these)", ...(checks.map(c => `- ${c.sev === "e" ? "Error" : "Check"}: ${c.rule} - ${c.msg}`)), checks.length ? "" : "- nothing");
+  const rd = readDataOf(b);
+  if (rd.length){ P.push("", "WHAT WAS READ FROM EACH SCANNED PAGE (JSON per page)"); rd.forEach(x => P.push(`Page ${x.page} - ${x.type}${x.employee ? " - employee " + x.employee : ""}: ${JSON.stringify(x.read)}`)); }
+  else P.push("", "No scanned pages were read for this batch - review what was entered.");
+  const nt = lines(b.ReadNotes); if (nt.length) P.push("", "NOTES MADE WHILE READING", ...nt.map(n => "- " + n));
+  const docs = (ed.docs || []).map(d => d.DocumentType).filter(Boolean); if (docs.length) P.push("", `DOCUMENTS FILED: ${docs.join(", ")}`);
+  return P.join("\n");
+}
+function reviewSchema(){
+  return { type:"object", required:["findings"], properties:{
+    summary:{ type:"string", description:"one sentence on the batch overall" },
+    findings:{ type:"array", maxItems:12, items:{ type:"object", required:["severity","point"], properties:{
+      severity:{ type:"string", enum:["Query","Check","Note"], description:"Query = should be raised with the agency or DPM before paying; Check = a checker should look at it; Note = for information" },
+      point:{ type:"string", description:"one or two plain-English sentences with the figures and the difference, e.g. 'The letter gives gross K861,450.20 but the two schedules add up to K681,450.20 - the first digits look swapped.'" },
+      documents:{ type:"string", description:"the documents and pages it comes from, e.g. 'Endorsement Letter p4; schedules p5-6'" },
+      amount:{ type:["number","null"], description:"kina at stake, if any" } } } } } };
+}
+const REVIEW_INSTRUCTIONS = `You are an experienced payroll checker at the PNG Department of Personnel Management reviewing one batch of offline payment claims before it is accepted.
+Below is everything the Hub has for the batch: what was entered, the payment lines, the Hub's automatic checks, and what was read from each scanned page.
+List what should be queried that the automatic checks do NOT already show. Look across ALL the documents together, for example:
+- totals, gross, tax or net that differ between the cover letter or minute, the summary, the schedules, the pink forms and the calculation sheets (work the sums out; name the difference)
+- figures that look transposed or mistyped
+- dates out of logical order (e.g. a pink form prepared after DPM certified the summary, a letter dated before the figures it endorses were checked)
+- entitlements worked out at today's salary for someone who left long ago (final entitlements are normally at the salary on the date they left)
+- a contract gratuity or salary basis that differs from the employment contract, or a gratuity period that doesn't match the contract's start date and anniversaries
+- matters listed on a minute or Reference Form A that aren't in the pack, or documents the transaction type normally needs that are missing
+- claims marked PAID, possible double payments, the same person under two numbers, agency names that differ
+- budget figures that disagree, or an agency already over its PE budget
+Rules: be specific - give the figures, the documents and the pages. Say "check" or "may" where you're not sure; never invent a figure that isn't below. Ignore differences under K0.05. At most 12 points, most important first, each under 60 words. If there is nothing to query, return no findings.`;
+async function reviewBatch(){
+  if (!canReview() || ed.revBusy) return;
+  if (!ed.lines.some(l => num(l.Gross) > 0) && !readDataOf(ed.b).length) return tell("Enter the payment lines, or read the scan, first.", { title:"Review the batch" });
+  ed.revBusy = true; keepScroll(render);
+  try {
+    const tok = DEMO ? "demo" : await idToken();
+    const r = await fetch(setting("AwsApiUrl"), { method:"POST", headers:{ Authorization:"Bearer " + tok, "Content-Type":"application/json" },
+      body: JSON.stringify({ mode:"review", text: reviewText(), instructions: REVIEW_INSTRUCTIONS, schema: reviewSchema() }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(r.status === 401 ? "the reading service didn't accept your sign-in" : r.status === 503 || r.status === 504 ? "the review took longer than 30 seconds - press Review again" : r.status === 400 && /image/i.test(j.error || "") ? "the AWS service hasn't been updated for reviews yet - see aws/README-AWS.md" : j.error || j.message || `review service error ${r.status}`);
+    const f = j.fields || {};
+    const res = { at:`${TODAY} ${hhmm(new Date())}`, by:me.name, model:j.model || "", summary:f.summary || "", findings:(f.findings || []).filter(x => x && x.point).slice(0, 12) };
+    const wasClean = !ed.dirty;
+    ed.b.ReviewFindings = JSON.stringify(res); ed.b.ReviewedOn = res.at; ed.b.ReviewedBy = me.name; ed.dirty = true;
+    ed.revBusy = false;
+    if (ed.b.Title) await logEvent(ed.b.Title, "Reviewed", `${res.findings.length} point(s) to query${res.findings.length ? ":\n" + res.findings.map(f => `[${f.severity}] ${f.point}`).join("\n") : ""}`);
+    if (ed.b.id && wasClean) await saveBatch();
+    else { keepScroll(render); toast(`${res.findings.length} point(s) to query - Save draft to keep the review`); }
+  } catch(e){ ed.revBusy = false; keepScroll(render); showError("The review didn't run", e, "Nothing was changed. Press Review the batch to try again."); }
+}
+
 // Until someone picks the Batch kind, the pages decide it: a Batch Control Form means an agency batch;
 // a minute or endorsement letter without one means an endorsement pack.
 function autoKind(){
