@@ -1,8 +1,8 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  DPM Document Management Hub - "Read automatically" service. A small Lambda behind an
-  HTTP API that sends one scanned page to Claude on Amazon Bedrock (Australia inference
-  profile) and returns the fields it read. Only people signed in to the Hub (Entra ID
+  DPM Document Management Hub - "Read automatically" and "Review the batch" service. A small
+  Lambda behind an HTTP API that sends one scanned page (or, for a review, the batch as text)
+  to Claude on Amazon Bedrock (Australia inference profile) and returns what it found. Only people signed in to the Hub (Entra ID
   token for the Hub's app registration) can call it. Pages are not stored.
 
 Parameters:
@@ -16,8 +16,12 @@ Parameters:
     Description: Application (client) ID of the "DPM Document Management Hub" app registration
   ModelId:
     Type: String
-    Default: au.anthropic.claude-haiku-5-5
-    Description: Bedrock inference profile. au. keeps the pages in Australian regions.
+    Default: au.anthropic.claude-haiku-4-5-20251001-v1:0
+    Description: Bedrock inference profile for reading pages. au. keeps the pages in Australian regions.
+  ReviewModelId:
+    Type: String
+    Default: au.anthropic.claude-sonnet-4-6
+    Description: Bedrock inference profile for "Review the batch" (text only, once per batch)
   AllowedOrigin:
     Type: String
     Default: https://marcusappdev.github.io
@@ -67,11 +71,16 @@ Resources:
       Environment:
         Variables:
           MODEL_ID: !Ref ModelId
+          REVIEW_MODEL_ID: !Ref ReviewModelId
       Code:
         ZipFile: |
           import json, os, base64, boto3
           br = boto3.client("bedrock-runtime")
           MODEL = os.environ["MODEL_ID"]
+          REVIEW_MODEL = os.environ.get("REVIEW_MODEL_ID") or MODEL
+          REVIEW_SYSTEM = ("You review payroll claim batches for the PNG Department of Personnel Management. "
+                           "Use only the figures given; work sums out carefully; never invent a value. "
+                           "Amounts in kina written like K1,234.56.")
           SYSTEM = ("You read scanned payroll documents for the PNG Department of Personnel Management. "
                     "Copy every value exactly as written on the page - never guess or calculate a value that "
                     "is not written. Use null for anything blank, missing or unreadable and name such fields "
@@ -84,6 +93,23 @@ Resources:
                   raw = event.get("body") or "{}"
                   if event.get("isBase64Encoded"): raw = base64.b64decode(raw)
                   req = json.loads(raw)
+                  if req.get("mode") == "review":
+                      text = str(req["text"])[:150000]
+                      task = str(req.get("instructions") or "Review this batch.")[:8000]
+                      res = br.converse(
+                          modelId=REVIEW_MODEL,
+                          system=[{"text": REVIEW_SYSTEM}],
+                          messages=[{"role": "user", "content": [{"text": task + "\n\n" + text}]}],
+                          toolConfig={"tools": [{"toolSpec": {"name": "record_findings",
+                                      "description": "Record the points to query",
+                                      "inputSchema": {"json": req["schema"]}}}],
+                                      "toolChoice": {"tool": {"name": "record_findings"}}},
+                          inferenceConfig={"maxTokens": 3000, "temperature": 0})
+                      fields = next((c["toolUse"]["input"] for c in res["output"]["message"]["content"] if "toolUse" in c), None)
+                      u = res.get("usage", {})
+                      print(json.dumps({"review": True, "in": u.get("inputTokens"), "out": u.get("outputTokens")}))
+                      return reply(200, {"fields": fields, "model": REVIEW_MODEL,
+                                         "usage": {"input": u.get("inputTokens"), "output": u.get("outputTokens")}})
                   img = base64.b64decode(req["image"])
                   fmt = req.get("format", "jpeg")
                   if fmt not in ("jpeg", "png") or len(img) > 3_700_000:
