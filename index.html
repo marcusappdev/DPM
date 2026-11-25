@@ -17,8 +17,8 @@
 header .rolesel{background:#1d3550;color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:4px 6px;font-size:12px}
 .sec{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--sc,var(--accent));border-radius:var(--r);padding:14px 16px;margin-bottom:16px;box-shadow:var(--shadow)}
 .sec > h3{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:.4px;color:var(--sc,var(--accent))}
-.sec.s-ctl{--sc:#1d4e89}.sec.s-sum{--sc:#0f8a80}.sec.s-lines{--sc:#7c3aed}.sec.s-docs{--sc:#b45309}.sec.s-chk{--sc:#b91c1c}.sec.s-hist{--sc:#64748b}
-@media (prefers-color-scheme:dark){.sec.s-ctl{--sc:#6f9bf5}.sec.s-sum{--sc:#3cc2b6}.sec.s-lines{--sc:#a98bf5}.sec.s-docs{--sc:#eaa24f}.sec.s-chk{--sc:#f87171}.sec.s-hist{--sc:#98a2b0}}
+.sec.s-bud{--sc:#0e7490}.sec.s-ctl{--sc:#1d4e89}.sec.s-sum{--sc:#0f8a80}.sec.s-lines{--sc:#7c3aed}.sec.s-docs{--sc:#b45309}.sec.s-chk{--sc:#b91c1c}.sec.s-hist{--sc:#64748b}
+@media (prefers-color-scheme:dark){.sec.s-bud{--sc:#38bdf8}.sec.s-ctl{--sc:#6f9bf5}.sec.s-sum{--sc:#3cc2b6}.sec.s-lines{--sc:#a98bf5}.sec.s-docs{--sc:#eaa24f}.sec.s-chk{--sc:#f87171}.sec.s-hist{--sc:#98a2b0}}
 .edhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .edhead h2{font-size:20px}
 .edhead .sub{color:var(--muted);font-size:13px}
@@ -120,8 +120,8 @@ body.scanmode main{max-width:none}
 .pg select{font-size:12px;padding:4px;border:1px solid var(--line);border-radius:6px;background:var(--surface);width:100%}
 .pg .pgn{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;font-weight:650}
 .btn.sm{padding:4px 10px;font-size:12px}
-input.auto,select.auto{background:#fff4cc!important;border-color:#d4a017!important}
-@media (prefers-color-scheme:dark){input.auto,select.auto{background:#3d3210!important}}
+input.auto,select.auto,textarea.auto{background:#fff4cc!important;border-color:#d4a017!important}
+@media (prefers-color-scheme:dark){input.auto,select.auto,textarea.auto{background:#3d3210!important}}
 .readnotes{background:var(--warn-bg);border-radius:8px;padding:8px 14px;margin:0 0 12px;font-size:13px}
 .readnotes ul{margin:4px 0 0;padding-left:18px}
 </style>
@@ -166,7 +166,13 @@ const DEMO = String(CONFIG.CLIENT_ID).startsWith("<<");
 
 const FORM_TYPES = ["New and Amended Employee Information","Employee Salary / Permanent Variation Advice","Employee Salary Allowances / Permanent Variation Advice","Employee Salary Deductions / Permanent Variation Advice","Employee Salary Tax / Permanent Variation Advice","Employee Salary Disbursement / Permanent Variation Advice","Employee Overtime / Shift Temporary Variation Advice","Request for Higher Duties Allowance","Leave Application","Returned from Leave","Offline Payment (Normal Pay)","Offline Payment (Special Pay)","Termination Advice"];
 const NATURES = ["Deceased","Resignation","Retirement","Retrenchment","Termination","Dismissal","Contract completion","Not applicable"];
-const DOC_TYPES = ["Batch Control Form","DPM Validated Summary","Special Offline Payment Form","Gratuity Calculation","Higher Duties Calculation","Final Entitlements Calculation","Agency Schedule","Other Supporting Document"];
+const DOC_TYPES = ["Batch Control Form","DPM Validated Summary","Special Offline Payment Form","Gratuity Calculation","Higher Duties Calculation","Final Entitlements Calculation","Agency Schedule",
+  "DPM Minute","Endorsement Letter","Reference Form A","PE & Budget Dashboard","Employment Contract","Other Supporting Document"];
+// An agency batch comes with a Batch Control Form. An endorsement pack is DPM's own minute or Secretary's letter
+// endorsing claims, with the schedules - no Batch Control Form, often no pink forms.
+const BATCH_KINDS = ["Agency batch","Endorsement pack"];
+const COVER_TYPES = ["Endorsement Letter","DPM Minute","Reference Form A"];
+const isPack = b => b && b.BatchKind === "Endorsement pack";
 const ROLES = ["Data Entry","Checker","Manager (read only)","Admin"];
 const STATUS_PILL = { "Draft":"p-grey", "Submitted for check":"p-info", "Verified":"p-info", "Accepted":"p-ok", "Rejected":"p-crit", "Returned to agency":"p-warn", "Superseded":"p-grey" };
 const LINE_PILL = { "Pending":"p-grey", "OK":"p-ok", "Query":"p-warn", "Held - marked paid":"p-warn", "Rejected":"p-crit" };
@@ -227,14 +233,17 @@ function weekEnding(d){
 function checkBatch(b, ls, docs){
   const out = [], E = (rule, msg, line) => out.push({ sev:"e", rule, msg, line }), W = (rule, msg, line) => out.push({ sev:"w", rule, msg, line });
   const tol = num(setting("AmountTolerance", "0")) + 0.005, maxTax = num(setting("MaxTaxPct", "40"));
-  const req = [["AgencyName","Agency"],["PayNo","Pay No"],["PayDate","Pay Date"],["FormType","Type of Form"],["NumberOfForms","Number of Forms"],
+  const pack = isPack(b), cov = b.CoverType || "cover document";
+  const req = pack ? [["AgencyName","Agency"],["CoverType","Cover document"],["CoverDate","Cover date"],["ReceivedDate","Date Received"],["TransactionType","Transaction Type"]]
+   : [["AgencyName","Agency"],["PayNo","Pay No"],["PayDate","Pay Date"],["FormType","Type of Form"],["NumberOfForms","Number of Forms"],
     ["RaisedBy","Batch Raised By"],["RaisedDate","Date Raised"],["ReceivedDate","Date Received"],["TransactionType","Transaction Type"],
     ["SummaryPreparedBy","Summary Prepared By"],["SummaryPreparedDate","Summary Prepared Date"],["SummaryCheckedBy","Summary Checked By"],["SummaryCheckedDate","Summary Checked Date"]];
   const miss = req.filter(([k]) => b[k] === undefined || b[k] === null || String(b[k]).trim() === "").map(([, l]) => l);
   if (miss.length) E("Required fields", `Missing: ${miss.join(", ")}`);
+  if (pack && !(b.SummaryPreparedBy && b.SummaryCheckedBy)) W("Sign-offs", "No Prepared By / Checked By on the schedule - check who prepared and checked the figures");
   if (b.AgencyName && !matchAgency(b.AgencyName)) W("Agency not in list", `"${b.AgencyName}" isn't in the Agencies list or its other names - check the spelling or add it`);
   if (b.PayNo && !/^\d{1,2}\/\d{2}$/.test(String(b.PayNo).trim())) E("Pay No format", `Pay No "${b.PayNo}" should look like 23/26`);
-  ["PayDate","RaisedDate","ReceivedDate","PADate","SummaryPreparedDate","SummaryCheckedDate","SummaryValidatedDate","SummaryCertifiedDate"].forEach(k => {
+  ["PayDate","RaisedDate","ReceivedDate","PADate","CoverDate","BudgetPrinted","SummaryPreparedDate","SummaryCheckedDate","SummaryValidatedDate","SummaryCertifiedDate"].forEach(k => {
     if (b[k] && !isRealDate(b[k])) E("Invalid date", `${k.replace(/([A-Z])/g, " $1").trim()} "${b[k]}" isn't a real date`);
   });
   if (isRealDate(b.RaisedDate) && b.RaisedDate > TODAY) E("Date in the future", `Date Raised ${fmtDate(b.RaisedDate)} is after today`);
@@ -249,7 +258,7 @@ function checkBatch(b, ls, docs){
     if (b[k] !== "" && b[k] != null && Math.abs(num(b[k]) - sum(f)) > tol) E("Totals don't agree", `Summary total ${f.toLowerCase()} ${kina(b[k])} but the lines add up to ${kina(sum(f))}`);
   });
   const pinkReq = setting("RequirePinkFormPerLine", "Yes") === "Yes";
-  if (b.NumberOfForms !== "" && b.NumberOfForms != null && pinkReq && num(b.NumberOfForms) !== ls.length)
+  if (!pack && b.NumberOfForms !== "" && b.NumberOfForms != null && pinkReq && num(b.NumberOfForms) !== ls.length)
     E("Number of forms", `Batch Control Form says ${b.NumberOfForms} form(s) but there are ${ls.length} payment line(s)`);
   const tt = ttype(b.TransactionType);
   const seen = {};
@@ -273,7 +282,7 @@ function checkBatch(b, ls, docs){
     if (isRealDate(l.PeriodFrom) && isRealDate(l.PeriodTo) && l.PeriodTo < l.PeriodFrom) E("Payment period", `${who}: period ends before it starts`, i);
     if (String(l.PeriodText || "").trim() && !(l.PeriodFrom && l.PeriodTo)) W("Period dates", `${who}: only the written period is entered - add From / To dates if the form gives them`, i);
     if (tt && tt.NeedsNature === "Yes" && !l.NatureOfClaim) E("Nature of claim", `${who}: nature of claim is needed for ${b.TransactionType}`, i);
-    if (pinkReq && l.PinkFormMatched !== "Yes") E("Pink form", `${who}: no matching Special Offline Payment Form ticked`, i);
+    if (pinkReq && !pack && l.PinkFormMatched !== "Yes") E("Pink form", `${who}: no matching Special Offline Payment Form ticked`, i);
     if (l.MarkedPaid) E("Marked paid - held", `${who}: a handwritten "Paid" note is on the form - hold and confirm it hasn't been paid already`, i);
     // duplicates inside the batch
     const k = emp + "|" + (l.PayCode || l.PaymentCategory || "");
@@ -289,12 +298,31 @@ function checkBatch(b, ls, docs){
       if (other) W("Name differs", `${who}: employee ${emp} is "${other.EmployeeName}" in batch ${other.BatchRef} - check the number belongs to this person`, i);
     }
   });
+  if (pack && pinkReq){ const n = ls.filter(l => l.PinkFormMatched !== "Yes").length; if (n) W("Pink forms", `${n} line(s) have no pink form ticked - endorsement packs often come without them; tick Pink ✓ where one is in the pack`); }
+  if (!pack && b.FormType === "Offline Payment (Normal Pay)" && ls.some(l => l.PinkFormMatched === "Yes"))
+    W("Type of form", "The Batch Control Form ticks Offline Payment (Normal Pay), but the pink forms are Special Offline Payment forms");
+  // the minute or letter's own figures, and against the lines
+  const has = k => b[k] !== "" && b[k] != null;
+  if (has("CoverGross") && has("CoverTax") && has("CoverNet") && Math.abs(num(b.CoverGross) - num(b.CoverTax) - num(b.CoverNet)) > tol)
+    E("Cover figures don't add up", `The ${cov} gives gross ${kina(b.CoverGross)} less tax ${kina(b.CoverTax)} = ${kina(num(b.CoverGross) - num(b.CoverTax))}, but states net ${kina(b.CoverNet)}`);
+  const allClaims = !has("CoverClaims") || num(b.CoverClaims) === ls.length;
+  [["CoverGross","Gross"],["CoverTax","Tax"],["CoverNet","Net"]].forEach(([k, f]) => {
+    if (has(k) && Math.abs(num(b[k]) - sum(f)) > tol) (allClaims ? E : W)("Cover total differs", `The ${cov} states ${f.toLowerCase()} ${kina(b[k])}, the lines add up to ${kina(sum(f))}${allClaims ? "" : ` (it covers ${b.CoverClaims} claim(s), ${ls.length} line(s) are entered)`}`);
+  });
+  if (has("CoverClaims") && num(b.CoverClaims) !== ls.length) W("Number of claims", `The ${cov} covers ${b.CoverClaims} claim(s), ${ls.length} line(s) are entered - check whether the others were paid earlier`);
+  lines(b.CoverOtherAmounts).forEach(x => W("Other amount on the cover", `${x} - it matches none of the totals; check which figure is right`));
+  // the agency's PE budget position, from the Power BI printout in the batch
+  if (num(b.BudgetAmount) > 0 && num(b.BudgetSpent) > num(b.BudgetAmount))
+    W("Over PE budget", `${b.BudgetLabel || b.AgencyName || "The agency"} had spent ${kinaShort(b.BudgetSpent)} of its ${kinaShort(b.BudgetAmount)} PE budget${b.BudgetPayNo ? " by pay " + b.BudgetPayNo : ""} - this batch adds ${kina(sum("Gross"))} gross`);
+  else if (has("BudgetForecast") && num(b.BudgetForecast) < 0)
+    W("Forecast overspend", `${b.BudgetLabel || b.AgencyName || "The agency"} is forecast to overspend its PE budget by ${kinaShort(-num(b.BudgetForecast))}${b.BudgetPayNo ? " (at pay " + b.BudgetPayNo + ")" : ""}`);
   const autoN = (ed && ed.b === b ? ed.auto?.size || 0 : 0) + ls.reduce((a, l) => a + (l._auto?.size || 0), 0);
   if (autoN) W("Read automatically", `${autoN} value(s) were filled from the scan and are highlighted - check each against the page, then edit or leave it`);
   if (docs){
-    const has = t => docs.some(d => d.DocumentType === t);
-    if (b.Title && !has("Batch Control Form")) W("Documents", "No scan of the Batch Control Form attached yet");
-    if (b.Title && !has("DPM Validated Summary")) W("Documents", "No scan of the DPM Validated Summary attached yet");
+    const hasDoc = t => docs.some(d => d.DocumentType === t);
+    if (b.Title && pack && !COVER_TYPES.some(hasDoc)) W("Documents", "No scan of the minute or endorsement letter attached yet");
+    if (b.Title && !pack && !hasDoc("Batch Control Form")) W("Documents", "No scan of the Batch Control Form attached yet");
+    if (b.Title && !pack && !hasDoc("DPM Validated Summary")) W("Documents", "No scan of the DPM Validated Summary attached yet");
   }
   return out;
 }
@@ -372,6 +400,12 @@ function viewDash(){
   // overspend: accepted offline payments this year against each agency's PE budget
   const withBudget = S.agencies.filter(a => num(a.AnnualPEBudget) > 0);
   const yearLines = S.lines.filter(l => { const b = S.batches.find(x => x.Title === l.BatchRef); return b && b.BatchStatus === "Accepted" && String(b.PayDate || b.ReceivedDate || b.EnteredDate || "").startsWith(YEAR); });
+  const snaps = {};
+  S.batches.filter(b => num(b.BudgetAmount) > 0 && b.BatchStatus !== "Superseded" && (!ag || b.AgencyName === ag)).forEach(b => {
+    const k = b.AgencyName || b.BudgetLabel, when = `${b.BudgetPrinted || ""}|${b.ReceivedDate || ""}`;
+    if (!snaps[k] || when > snaps[k].when) snaps[k] = { b, when };
+  });
+  const snapRows = Object.entries(snaps).map(([k, { b }]) => [k, num(b.BudgetSpent), num(b.BudgetAmount), b]).sort((x, y) => y[1] / y[2] - x[1] / x[2]);
   const budgetRows = withBudget.map(a => { const spent = sumOf(yearLines.filter(l => l.AgencyName === a.Title), "Gross"); return [a.Title, spent, num(a.AnnualPEBudget)]; }).sort((x, y) => y[1]/y[2] - x[1]/x[2]);
   return `<div class="bar"><h2>Dashboard</h2><span class="grow"></span>
       <select class="f" id="dWeek"><option value="">All weeks</option>${weeks().map(w => opt(w, wk, "Week ending " + fmtDate(w))).join("")}</select>
@@ -390,6 +424,9 @@ function viewDash(){
       <div class="card"><h3>Accepted gross by transaction type</h3>${bars(byTT, byTT[0]?.[1], "#0f8a80")}</div>
       <div class="card"><h3>Why batches were rejected</h3>${topReasons.length ? topReasons.map(([k, v]) => `<div class="hb" style="grid-template-columns:minmax(120px,50%) 1fr 40px"><span>${esc(k)}</span><span class="t"><i style="width:${v / topReasons[0][1] * 100}%;background:#b91c1c"></i></span><span class="n">${v}</span></div>`).join("") : `<div class="empty">No rejected batches for this selection.</div>`}</div>
       <div class="card"><h3>Offline payments against PE budget (${YEAR})</h3>${budgetRows.length ? budgetRows.map(([k, s, bud]) => { const p = s / bud * 100; return `<div class="hb" style="grid-template-columns:minmax(120px,38%) 1fr 64px"><span title="${esc(k)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k)}</span><span class="t"><i style="width:${Math.min(100, p)}%;background:${p > 100 ? "#b91c1c" : p > 80 ? "#b45309" : "#15803d"}"></i></span><span class="n">${p.toFixed(1)}%</span></div>`; }).join("") : `<div class="empty">No agency budgets yet. When a budget source is available, enter each agency's Annual PE Budget under Agencies &amp; codes and this shows the overspend.</div>`}</div>
+      <div class="card"><h3>PE spending against budget (Power BI printouts in the batches)</h3>${snapRows.length ? snapRows.map(([k, s, bud, b]) => { const p = s / bud * 100;
+        return `<div class="hb" style="grid-template-columns:minmax(120px,38%) 1fr 64px" title="${esc(`${kinaShort(s)} spent of ${kinaShort(bud)}${b.BudgetPayNo ? " at pay " + b.BudgetPayNo : ""}${b.BudgetForecast != null && b.BudgetForecast !== "" ? " · forecast " + kinaShort(b.BudgetForecast) : ""} · from ${b.Title}`)}"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k)}</span><span class="t"><i style="width:${Math.min(100, p)}%;background:${p > 100 ? "#b91c1c" : p > 90 ? "#b45309" : "#15803d"}"></i></span><span class="n">${p.toFixed(1)}%</span></div>`; }).join("")
+        + `<p class="note" style="margin-top:8px">Latest printout per agency. Point at a bar for the figures and pay number.</p>` : `<div class="empty">No PE &amp; Budget printouts read yet. When a batch includes one, Read automatically fills its figures and this shows each agency's spending against budget.</div>`}</div>
     </div>`;
 }
 
@@ -603,10 +640,16 @@ const SUM = [["TransactionType","Transaction Type","ttype",1],["DPMRegion","DPM 
   ["SummaryValidatedBy","Validated By"],["SummaryValidatedDate","Validated Date","date"],["SummaryCertifiedBy","Certified By"],["SummaryCertifiedDate","Certified Date","date"],
   ["TotalGross","Total Gross on summary (K)","money"],["TotalTax","Total Tax on summary (K)","money"],["TotalNet","Total Net on summary (K)","money"],["AgencyClaimedGross","Agency Claimed Gross (K) - if shown","money"]];
 
+const COVER = [["AgencyName","Agency (Department)","agency",1],["CoverType","Cover document","cover",1],["CoverDate","Cover date","date",1],["CoverRef","Reference / file no"],
+  ["CoverFrom","Signed by"],["CoverClaims","Claims it covers","number"],["CoverGross","Gross stated (K)","money"],["CoverTax","Tax stated (K)","money"],["CoverNet","Net stated (K)","money"],
+  ["PayNo","Pay No","text",0,"23/26"],["ReceivedDate","Date Received by DPM","date",1]];
+const BUDGET = [["BudgetLabel","Agency as shown"],["BudgetPayNo","At pay","text",0,"22/2026"],["BudgetAmount","PE budget (K)","money"],["BudgetSpent","Spent to date (K)","money"],
+  ["BudgetForecast","Forecast (K, minus = overspend)","money"],["BudgetPrinted","Printed on","date"]];
 function openBatch(id, mode = "manual"){
   if (id === "new"){
     if (!canEnter()){ tell(`Your role (${me.role}) can't enter batches.`); go("batches"); return; }
-    ed = { b:{ BatchStatus:"Draft", ReceivedDate:TODAY, FormType:"Offline Payment (Special Pay)", CaptureMethod:"Manual entry" }, lines:[blankLine()], removed:[], docs:[], isNew:true, auto:new Set(), scan:newScan(), mode };
+    ed = { b:{ BatchStatus:"Draft", BatchKind:"Agency batch", ReceivedDate:TODAY, FormType:"Offline Payment (Special Pay)", CaptureMethod:"Manual entry" }, lines:[blankLine()], removed:[], docs:[], isNew:true, auto:new Set(), scan:newScan(), mode,
+      defaults:new Set(["BatchKind","FormType"]) };   // starting values a scan may replace
   } else {
     const b = S.batches.find(x => String(x.id) === String(id));
     if (!b){ tell("That batch wasn't found - it may have been removed."); go("batches"); return; }
@@ -623,6 +666,8 @@ function field([k, label, type = "text", req, ph]){
   const lab = `<span class="${req ? "req" : ""}">${esc(label)}</span>`;
   let inp;
   if (type === "form") inp = `<select data-f="${k}"><option></option>${FORM_TYPES.map(x => opt(x, v)).join("")}</select>`;
+  else if (type === "cover") inp = `<select data-f="${k}"><option></option>${COVER_TYPES.map(x => opt(x, v)).join("")}</select>`;
+  else if (type === "kind") inp = `<select data-f="${k}">${BATCH_KINDS.map(x => opt(x, v || "Agency batch")).join("")}</select>`;
   else if (type === "ttype") inp = `<select data-f="${k}"><option></option>${S.ttypes.filter(t => t.TTActive !== "No" || t.Title === v).map(t => opt(t.Title, v)).join("")}</select>`;
   else if (type === "yesno") inp = `<select data-f="${k}"><option></option>${opt("Yes", v)}${opt("No", v)}</select>`;
   else if (type === "agency") inp = `<input data-f="${k}" list="dlAg" value="${esc(v)}" placeholder="Type to search agencies">`;
@@ -654,18 +699,22 @@ function renderEditor(banner){
   const errs = checks.filter(c => c.sev === "e"), badLines = quietChecks() ? new Set() : new Set(errs.filter(c => c.line != null).map(c => c.line));
   const events = b.Title ? S.events.filter(e => e.Title === b.Title).sort((x, y) => String(y.EventOn).localeCompare(String(x.EventOn))) : [];
   const ownEntry = norm(b.EnteredBy) && norm(b.EnteredBy) === norm(me.name);
-  const scanMode = ed.mode === "scan";
+  const scanMode = ed.mode === "scan", pack = isPack(b);
+  const ta = (k, label) => `<label class="fld w3"><span>${esc(label)}</span><textarea data-f="${k}" class="${ed.auto?.has(k) ? "auto" : ""}">${esc(b[k])}</textarea></label>`;
   document.body.classList.toggle("scanmode", scanMode);
   const head = `
-    <div class="edhead"><button class="btn" id="back">← Batches</button><h2>${esc(b.Title || (scanMode ? "New scanned batch" : "New batch"))}</h2>${pill(b.BatchStatus || "Draft")}
+    <div class="edhead"><button class="btn" id="back">← Batches</button><h2>${esc(b.Title || (scanMode ? "New scanned batch" : "New batch"))}</h2>${pill(b.BatchStatus || "Draft")}${pack ? ` <span class="pill p-info">Endorsement pack</span>` : ""}
       <span class="sub">${b.AgencyName ? esc(b.AgencyName) : ""}${b.PayNo ? " · Pay " + esc(b.PayNo) : ""}${b.ResubmissionOf ? " · resubmission of " + esc(b.ResubmissionOf) : ""}</span></div>
     ${b.BatchStatus === "Rejected" || b.BatchStatus === "Returned to agency" ? `<div class="banner err"><b>Rejected</b>${b.AcceptedBy ? " by " + esc(b.AcceptedBy) + " on " + fmtDate(b.AcceptedDate) : ""}${b.ReturnedDate ? " · returned to agency " + fmtDate(b.ReturnedDate) : ""}<div style="white-space:pre-wrap;margin-top:6px">${esc(b.RejectionReasons)}</div></div>` : ""}
     ${isMigrated(b) ? `<div class="banner"><b>From the old register</b> (${esc(b.SourceSheet || "")}) - imported as it was typed, not checked against the paper documents.<div style="white-space:pre-wrap;margin-top:6px">${esc(b.BatchNotes || "")}</div></div>` : ""}`;
   const form = `    <div id="edForm" class="${can ? "" : "readonly"}">
-    <div class="sec s-ctl"><h3>1 · Batch Control Form</h3><div class="fg">${CTL.map(field).join("")}</div></div>
+    <div class="sec s-ctl"><h3>1 · ${pack ? "Cover - DPM minute or endorsement letter" : "Batch Control Form"}</h3>
+      <div class="fg">${field(["BatchKind","Batch kind","kind"])}<p class="note w2" style="align-self:end;margin:0">${pack ? "DPM's own minute or Secretary's letter with the schedules - no Batch Control Form." : "Submitted by the agency with a Batch Control Form and a pink form per employee."}</p></div>
+      <div class="fg" style="margin-top:12px">${(pack ? COVER : CTL).map(field).join("")}${pack ? ta("CoverOtherAmounts", "Other amounts stated on the cover (one per line)") : ""}</div></div>
     <div class="sec s-sum"><h3>2 · DPM Validated Summary</h3><div class="fg">${SUM.map(field).join("")}
       <label class="fld w3"><span>Notes</span><textarea data-f="BatchNotes">${esc(b.BatchNotes)}</textarea></label></div></div>
-    <div class="sec s-lines"><h3>3 · Payment lines - one per employee (Special Offline Payment Forms)</h3>
+    <div class="sec s-bud"><h3>PE budget at the time <span class="note" style="text-transform:none;letter-spacing:0;font-weight:400">from the PE &amp; Budget Monitoring printout, when one is in the batch</span></h3><div class="fg">${BUDGET.map(field).join("")}</div></div>
+    <div class="sec s-lines"><h3>3 · Payment lines - one per employee ${pack ? "on the schedule" : "(Special Offline Payment Forms)"}</h3>
       <div class="tablewrap" style="box-shadow:none"><table class="lines"><thead><tr><th>#</th><th>Emp / File No</th><th>Name</th><th>Nature</th><th>Pay code</th><th>Category</th><th>Period from</th><th>Period to</th><th>Period (as written)</th><th>Ftns</th><th>Gross</th><th>Tax</th><th>Net</th><th>Tax %</th><th>Stated %</th><th title="Pink form matched">Pink ✓</th><th title='Marked "Paid" by hand'>Paid?</th><th>Remarks</th><th></th></tr></thead>
       <tbody id="lnBody">${ed.lines.map((l, i) => lineRow(l, i, badLines.has(i))).join("")}</tbody>
       <tfoot><tr><td colspan="10">Totals (${ed.lines.length} line${ed.lines.length === 1 ? "" : "s"})</td><td id="tG">${kina(sumOf(ed.lines, "Gross"))}</td><td id="tT">${kina(sumOf(ed.lines, "Tax"))}</td><td id="tN">${kina(sumOf(ed.lines, "Net"))}</td><td colspan="6"></td></tr></tfoot></table></div>
@@ -739,7 +788,8 @@ function bindEditor(){
   const form = $("#edForm");
   form.addEventListener("input", e => {
     const t = e.target;
-    if (t.dataset.f){ ed.b[t.dataset.f] = t.value; ed.auto?.delete(t.dataset.f); t.classList.remove("auto"); ed.dirty = true; refreshChecks(); }
+    if (t.dataset.f){ ed.b[t.dataset.f] = t.value; ed.auto?.delete(t.dataset.f); ed.defaults?.delete(t.dataset.f); t.classList.remove("auto"); ed.dirty = true;
+      if (t.dataset.f === "BatchKind"){ keepScroll(render); return; } refreshChecks(); }
     else if (t.dataset.l != null){ const l = ed.lines[+t.dataset.l], k = t.dataset.k; l._auto?.delete(k); t.classList.remove("auto");
       if (t.type === "checkbox") l[k] = k === "MarkedPaid" ? t.checked : (t.checked ? "Yes" : "No"); else l[k] = t.value;
       // fill net from gross - tax when net is still empty
@@ -787,9 +837,11 @@ async function logEvent(ref, type, details = ""){
 /* ---------------- save ---------------- */
 const B_FIELDS = ["AgencyName","BatchNumber","PayNo","PayDate","FormType","NumberOfForms","FirstAdviceNo","LastAdviceNo","RaisedBy","RaisedByPhone","RaisedDate","PAOfficer","PADate","PAStamped",
   "TransactionType","DPMRegion","SummaryRef","SummaryPreparedBy","SummaryPreparedDate","SummaryCheckedBy","SummaryCheckedDate","SummaryValidatedBy","SummaryValidatedDate","SummaryCertifiedBy","SummaryCertifiedDate",
-  "TotalGross","TotalTax","TotalNet","AgencyClaimedGross","ReceivedDate","BatchStatus","RejectionReasons","ReturnedDate","ResubmissionOf","EnteredBy","EnteredDate","VerifiedBy","VerifiedDate","AcceptedBy","AcceptedDate","CaptureMethod","BatchNotes"];
+  "TotalGross","TotalTax","TotalNet","AgencyClaimedGross","ReceivedDate","BatchStatus",
+  "BatchKind","CoverType","CoverRef","CoverDate","CoverFrom","CoverClaims","CoverGross","CoverTax","CoverNet","CoverOtherAmounts",
+  "BudgetLabel","BudgetPayNo","BudgetAmount","BudgetSpent","BudgetForecast","BudgetPrinted","RejectionReasons","ReturnedDate","ResubmissionOf","EnteredBy","EnteredDate","VerifiedBy","VerifiedDate","AcceptedBy","AcceptedDate","CaptureMethod","BatchNotes"];
 const L_FIELDS = ["EmployeeNo","EmployeeName","NatureOfClaim","PaymentCategory","PayCode","PeriodFrom","PeriodTo","PeriodText","Fortnights","Gross","Tax","Net","StatedTaxPct","PinkFormMatched","Remarks","AgencyClaimedGross","AgencyClaimedTax","AgencyClaimedNet","Designation","GradeStep","Reason","PeriodEndDate"];
-const NUMERIC = new Set(["NumberOfForms","TotalGross","TotalTax","TotalNet","AgencyClaimedGross","Fortnights","Gross","Tax","Net","StatedTaxPct","AgencyClaimedTax","AgencyClaimedNet","TaxRatePct","LineCount"]);
+const NUMERIC = new Set(["CoverClaims","CoverGross","CoverTax","CoverNet","BudgetAmount","BudgetSpent","BudgetForecast","NumberOfForms","TotalGross","TotalTax","TotalNet","AgencyClaimedGross","Fortnights","Gross","Tax","Net","StatedTaxPct","AgencyClaimedTax","AgencyClaimedNet","TaxRatePct","LineCount"]);
 function clean(obj, keys){ const o = {}; keys.forEach(k => { let v = obj[k]; if (v === undefined) return; if (NUMERIC.has(k)) v = v === "" || v == null ? null : num(v); else v = v == null ? "" : String(v); o[k] = v; }); return o; }
 
 let saving = false;
@@ -978,6 +1030,7 @@ const obj = props => ({ type:"object", properties:props });
 function readSchema(){
   return { type:"object", required:["documentType"], properties:{
     documentType:{ type:"string", enum:DOC_TYPES, description:"Which kind of document this page is" },
+    upright:{ type:["integer","null"], enum:[0, 90, 180, 270, null], description:"degrees the page must be turned CLOCKWISE so its text reads normally: 0 if it is already upright, 180 if upside down, 90 or 270 if sideways" },
     batchControl: obj({ department:sS(), payNo:sS("e.g. 23/26"), payDate:sS(), formTypeTicked:{ type:["string","null"], enum:[...FORM_TYPES, null] }, numberOfForms:sN(), batchNumber:sS(),
       firstAdviceNo:sS(), lastAdviceNo:sS(), raisedBy:sS(), telephone:sS(), dateRaised:sS(), publicAccountsOfficer:sS(), publicAccountsDate:sS(), publicAccountsStamp:sB("true if the Public Accounts stamp is on the page") }),
     summary: obj({ agency:sS(), transactionType:sS("e.g. Gratuity, Final Entitlement, Higher Duties Allowance, Outstanding Salary"), dpmRegionOrBranch:sS(), summaryRef:sS("e.g. Costing for batch #003"),
@@ -989,9 +1042,20 @@ function readSchema(){
     paymentForm: obj({ employeeNo:sS("Employee Selection #: written ONE character per box, normally 8 boxes - read each box separately, left to right, and keep leading zeros"),
       employeeNumberBoxes:{ type:["array","null"], items:{ type:"string" }, description:"the Employee Selection # box by box, one character per item, exactly as written" },
       employeeName:sS("Surname & Other Name, letter by letter as written"), department:sS(), reason:sS(), periodEndDate:sS("from the Period End Date boxes (day, month, year)"),
+      payRun:sS("the Pay Run boxes, e.g. 23"),
       payLines:{ type:"array", items: obj({ date:sS(), payCode:sS("e.g. AGR35, AGR40, TAX - compare with the known pay codes"), units:sN(), rate:sN("the Rate column, read on its own"), amount:sN("the Amount column, read on its own - do not copy it from Rate") }) },
       preparedBy:sS(), preparedDate:sS(), checkedBy:sS(), checkedDate:sS(), markedPaid:sB("true if 'Paid' is handwritten on the form") }),
     calculation: obj({ employeeNo:sS(), employeeName:sS(), totalGross:sN(), tax:sN(), net:sN(), periodAsWritten:sS() }),
+    cover: obj({ agency:sS("the agency the claims are for"), date:sS(), reference:sS("file / reference number"), signedBy:sS(), subject:sS(), transactionType:sS("e.g. Gratuity, Final Entitlement"),
+      claimsCount:sN("how many claims / employees the stated totals cover, e.g. '31 contract gratuity claims' -> 31"),
+      totalGross:sN("the total gross the document states for the claims"), totalTax:sN(), totalNet:sN(),
+      otherAmounts:{ type:"array", items: obj({ where:sS("e.g. subject line, paragraph 2"), amount:sN() }), description:"any OTHER kina amount the document presents as the cost or total of these claims (e.g. in the subject line) that differs from totalGross, totalTax and totalNet. Not budget figures." },
+      peBudget:sN("the agency's personnel emolument (PE) budget for the year, if the document states one"),
+      mattersListed:{ type:"array", items:{ type:"string" }, description:"each separate matter listed for action, one short line each (Reference Form A numbers them)" } }),
+    budget: obj({ agencyShown:sS("the agency / department selected in the filter at the top, e.g. Attorney General"), payNo:sS("the PAY nn/yyyy at the top right, e.g. 22/2026"),
+      budget:sN("BUDGET in kina: K58.12M -> 58120000"), expenditure:sN("Total Expenditure to date in kina"), forecast:sN("the FORECAST figure in kina, negative when shown with a minus"),
+      printedDate:sS("the print date at the top left - the browser writes it month/day/year, e.g. 11/4/26 is 4 November 2026; return YYYY-MM-DD") }),
+    contract: obj({ employeeName:sS(), contractStartDate:sS(), annualBaseSalary:sN("Base Salary per year"), gratuityPct:sN("Contract Gratuity % of base salary"), gratuityAnnual:sN("the Contract Gratuity amount per year, if shown") }),
     unclear:{ type:"array", items:{ type:"string" }, description:"fields that were blank, crossed out or hard to read" }
   } };
 }
@@ -1003,7 +1067,12 @@ Fill ONLY the section for that kind of document and leave the other sections out
 - DPM Validated Summary (summary / costing table of one or more employees with gross, tax, net) -> summary, one entry in "lines" per employee row
 - Special Offline Payment Form (pink form for ONE employee, with pay code lines) -> paymentForm
 - Gratuity, Higher Duties or Final Entitlements calculation sheet -> calculation (the employee's final totals)
+- DPM Minute (internal, action or compliance minute), Endorsement Letter (Secretary's letter to an agency endorsing claims) or Reference Form A (routing slip) -> cover
+- PE & Budget Dashboard (Power BI "Public Service PE & Budget Monitoring Dashboard" printout) -> budget
+- Employment Contract: the page with the salary, allowances and Contract Gratuity -> contract; other contract pages -> only documentType
 - Agency Schedule or anything else -> only documentType
+Always fill "upright".
+On a minute or letter copy every figure exactly as written, even if it looks wrong - the Hub checks them.
 If a summary page shows both an agency claim table and a DPM validated table, use the DPM validated figures for the lines and put the agency's claimed total gross in agencyClaimedGross.
 Reading handwriting carefully:
 - Boxed numbers (Employee Selection #, dates, pay run) are written one character per box. Read every box on its own, left to right. Employee numbers are normally 8 characters, the last one sometimes a letter; never drop or merge a box.
@@ -1012,20 +1081,29 @@ Reading handwriting carefully:
 - Dates on these forms are written day / month / year (PNG). Return them as YYYY-MM-DD, with the month in the middle.
 - Copy names letter by letter as written; don't correct spelling.
 - "unclear" is only for something WRITTEN that is hard to read. Don't list boxes that are simply blank.
-Agencies the Hub knows: ${S.agencies.map(a => a.Title).join("; ")}.
+Agencies the Hub knows (other names after =): ${S.agencies.map(a => [a.Title, ...lines(a.Aliases).filter(x => x.length <= 45 && !/batch/i.test(x))].join(" = ")).join("; ")}.
 ${extra}`.trim();
+}
+// The page image turned by the page's rotation (set by ⟳ or by the reader), so it is read upright
+async function uprightImage(p){
+  if (!p.rot) return p.jpg;
+  if (p._rotJpg && p._rotFor === p.rot) return p._rotJpg;
+  const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error("couldn't turn the page")); i.src = p.jpg; });
+  const side = p.rot % 180 !== 0, c = whiteCanvas(side ? img.height : img.width, side ? img.width : img.height), x = c.getContext("2d");
+  x.translate(c.width / 2, c.height / 2); x.rotate(p.rot * Math.PI / 180); x.drawImage(img, -img.width / 2, -img.height / 2);
+  p._rotJpg = c.toDataURL("image/jpeg", 0.85); p._rotFor = p.rot; return p._rotJpg;
 }
 async function callReader(pg){
   const tok = DEMO ? "demo" : await idToken();
   const r = await fetch(setting("AwsApiUrl"), { method:"POST", headers:{ Authorization:"Bearer " + tok, "Content-Type":"application/json" },
-    body: JSON.stringify({ image: pg.jpg.split(",")[1], format:"jpeg", schema: readSchema(), instructions: readInstructions(pg) }) });
+    body: JSON.stringify({ image: (await uprightImage(pg)).split(",")[1], format:"jpeg", schema: readSchema(), instructions: readInstructions(pg) }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(r.status === 401 ? "the reading service didn't accept your sign-in" : r.status === 429 ? "too many pages at once - wait a moment" : j.error || j.message || `reading service error ${r.status}`);
   return j.fields || {};
 }
 
 /* ---------------- apply what was read to the batch ---------------- */
-const FIELD_LABEL = k => (CTL.concat(SUM).find(x => x[0] === k) || [k, k])[1];
+const FIELD_LABEL = k => (CTL.concat(SUM, COVER, BUDGET).find(x => x[0] === k) || [k, k])[1];
 const empKey = v => String(v ?? "").toUpperCase().replace(/\s+/g, "");
 function toDate(v, notes, what){
   if (v == null || v === "") return null;
@@ -1039,6 +1117,9 @@ function toDate(v, notes, what){
   notes.push(`${what}: "${v}" isn't a real date - enter it by hand`); return null;
 }
 const same = (a, b) => norm(a).replace(/[^a-z0-9]/g, "") === norm(b).replace(/[^a-z0-9]/g, "");
+// "KAUPA, JANE M." and "Mrs. Jane Maria Kaupa" are the same person: two name words in common (or one, for a one-word name)
+const nameWords = v => norm(v).split(/[^a-z]+/).filter(w => w.length > 2 && !["mrs","miss","mr","ms","the"].includes(w));
+const nameMatch = (a, b) => { const x = nameWords(a), y = nameWords(b); return !!x.length && !!y.length && x.filter(w => y.includes(w)).length >= Math.min(2, x.length, y.length); };
 function matchTType(v){ const n = norm(v); if (!n) return null; const t = S.ttypes.find(x => norm(x.Title) === n || lines(x.Aliases).some(a => norm(a) === n) || n.includes(norm(x.Title))); return t ? t.Title : null; }
 function applyRead(pg, f){
   const notes = [], P = `Page ${pg.n}`;
@@ -1046,7 +1127,7 @@ function applyRead(pg, f){
   const setB = (k, v) => {
     if (v == null || v === "") return;
     const cur = ed.b[k];
-    if (cur == null || String(cur).trim() === ""){ ed.b[k] = v; ed.auto.add(k); }
+    if (cur == null || String(cur).trim() === "" || ed.defaults?.has(k)){ ed.defaults?.delete(k); if (!same(cur, v)){ ed.b[k] = v; ed.auto.add(k); } return; }
     else if (same(cur, v)) return;
     else if (!(typeof v === "number" && Math.abs(num(cur) - v) < 0.005)) notes.push(`${P}: ${FIELD_LABEL(k)} on the page is "${v}", the form has "${cur}" - kept the form's value`);
   };
@@ -1063,7 +1144,7 @@ function applyRead(pg, f){
     if (l[k] == null || String(l[k]).trim() === "" || (k === "PinkFormMatched" && l[k] === "No")){ l[k] = v; l._auto.add(k); }
     else if (norm(l[k]) !== norm(v) && !(typeof v === "number" && Math.abs(num(l[k]) - v) < 0.005)) notes.push(`${P}: ${l.EmployeeName || l.EmployeeNo} - ${k} on the page is ${typeof v === "number" ? kina(v) : `"${v}"`}, the line has ${typeof v === "number" ? kina(l[k]) : `"${l[k]}"`}`);
   };
-  const bc = f.batchControl, su = f.summary, pf = f.paymentForm, ca = f.calculation;
+  const bc = f.batchControl, su = f.summary, pf = f.paymentForm, ca = f.calculation, co = f.cover, bu = f.budget, ct = f.contract;
   if (bc && pg.type === "Batch Control Form"){
     setAgency(bc.department); setB("PayNo", bc.payNo); setB("PayDate", toDate(bc.payDate, notes, `${P} pay date`));
     if (bc.formTypeTicked) setB("FormType", bc.formTypeTicked); if (bc.numberOfForms != null) setB("NumberOfForms", bc.numberOfForms);
@@ -1119,6 +1200,13 @@ function applyRead(pg, f){
       if (Math.abs(num(l.Gross) - gross) <= tol && Math.abs(num(l.Tax) - tax) <= tol){ if (consistent) setL(l, "PinkFormMatched", "Yes"); }
       else notes.push(`${P}: pink form for ${pf.employeeName || pf.employeeNo} shows gross ${kina(gross)}, tax ${kina(tax)} - the summary line has ${kina(l.Gross)}, ${kina(l.Tax)}. Not matched.`);
     }
+    // the Batch Control Form often leaves Pay No blank: the pink form's Pay Run gives it
+    const run = parseInt(String(pf.payRun ?? "").replace(/\D/g, ""), 10);
+    if (run >= 1 && run <= 27){
+      const pe = toDate(pf.periodEndDate, [], ""), pn = `${run}/${pe ? pe.slice(2, 4) : String(YEAR).slice(2)}`;
+      if (!String(ed.b.PayNo || "").trim()){ ed.b.PayNo = pn; ed.auto.add("PayNo"); notes.push(`${P}: Pay No ${pn} taken from the pink form's Pay Run - the Batch Control Form left it blank; check it`); }
+      else if (!same(ed.b.PayNo, pn)) notes.push(`${P}: the pink form's Pay Run gives ${pn}, the batch has Pay No ${ed.b.PayNo}`);
+    }
     setL(l, "PayCode", code); setL(l, "Reason", pf.reason); setL(l, "PeriodEndDate", toDate(pf.periodEndDate, notes, `${P} period end date`));
     if (pf.markedPaid){ l.MarkedPaid = true; l._auto.add("MarkedPaid"); notes.push(`${P}: "Paid" is written on ${pf.employeeName || pf.employeeNo}'s pink form - line held`); }
     pg.emp = l.EmployeeNo || pg.emp;
@@ -1132,6 +1220,44 @@ function applyRead(pg, f){
         if (v != null && String(l[key] ?? "") !== "" && Math.abs(num(l[key]) - v) > 0.01) notes.push(`${P}: calculation sheet for ${l.EmployeeName || l.EmployeeNo} gives ${w} ${kina(v)}, the line has ${kina(l[key])}`);
       });
     }
+  }
+  if (co && COVER_TYPES.includes(pg.type)){
+    setAgency(co.agency);
+    if (co.transactionType){ const t = matchTType(co.transactionType); if (t) setB("TransactionType", t); }
+    // a letter outranks a minute, a minute outranks the routing slip, for the cover details
+    const rank = t => { const i = COVER_TYPES.indexOf(t); return i < 0 ? 0 : COVER_TYPES.length - i; };
+    if (rank(pg.type) > rank(ed.b.CoverType)){
+      [["CoverType", pg.type], ["CoverDate", toDate(co.date, notes, `${P} date`)], ["CoverRef", co.reference], ["CoverFrom", co.signedBy]]
+        .forEach(([k, v]) => { if (v != null && v !== ""){ ed.b[k] = v; ed.auto.add(k); } });
+    } else if (pg.type === ed.b.CoverType){ setB("CoverDate", toDate(co.date, notes, `${P} date`)); setB("CoverRef", co.reference); setB("CoverFrom", co.signedBy); }
+    setB("CoverClaims", co.claimsCount); setB("CoverGross", co.totalGross); setB("CoverTax", co.totalTax); setB("CoverNet", co.totalNet);
+    const tots = [co.totalGross, co.totalTax, co.totalNet, ed.b.CoverGross, ed.b.CoverTax, ed.b.CoverNet].filter(v => v != null && v !== "").map(num);
+    (co.otherAmounts || []).forEach(x => {
+      if (x?.amount == null || tots.some(t => Math.abs(t - num(x.amount)) < 0.005)) return;
+      const line = `${kina(x.amount)}${x.where ? " in the " + String(x.where).replace(/^the /i, "") : ""} of the ${pg.type}`;
+      if (!lines(ed.b.CoverOtherAmounts).includes(line)){ ed.b.CoverOtherAmounts = [...lines(ed.b.CoverOtherAmounts), line].join("\n"); ed.auto.add("CoverOtherAmounts"); }
+    });
+    if (co.peBudget != null){
+      if (num(ed.b.BudgetAmount) > 0 && Math.abs(num(ed.b.BudgetAmount) - num(co.peBudget)) > 1) notes.push(`${P}: the ${pg.type} gives a PE budget of ${kina(co.peBudget)}, the PE & Budget dashboard shows ${kina(ed.b.BudgetAmount)} - check which is right`);
+      else setB("BudgetAmount", co.peBudget);
+    }
+    const ml = (co.mattersListed || []).filter(Boolean);
+    if (ml.length > 1) notes.push(`${P}: the ${pg.type} lists ${ml.length} matters - ${ml.join("; ")}. Check each one is in this scan.`);
+  }
+  if (bu && pg.type === "PE & Budget Dashboard"){
+    setB("BudgetLabel", bu.agencyShown); setB("BudgetPayNo", bu.payNo);
+    if (bu.budget != null && num(ed.b.BudgetAmount) > 0 && ed.auto.has("BudgetAmount") && Math.abs(num(ed.b.BudgetAmount) - num(bu.budget)) > 1){
+      notes.push(`${P}: the dashboard shows a PE budget of ${kina(bu.budget)}, the cover gives ${kina(ed.b.BudgetAmount)} - used the dashboard's; check which is right`); ed.b.BudgetAmount = bu.budget;
+    } else setB("BudgetAmount", bu.budget);
+    setB("BudgetSpent", bu.expenditure); setB("BudgetForecast", bu.forecast); setB("BudgetPrinted", toDate(bu.printedDate, notes, `${P} printed date`));
+  }
+  if (ct && pg.type === "Employment Contract" && (ct.gratuityAnnual != null || (ct.annualBaseSalary != null && ct.gratuityPct != null))){
+    const g = ct.gratuityAnnual != null ? num(ct.gratuityAnnual) : r2(num(ct.annualBaseSalary) * num(ct.gratuityPct) / 100);
+    const named = ed.lines.filter(x => num(x.Gross) > 0), l = named.find(x => nameMatch(x.EmployeeName, ct.employeeName)) || (named.length === 1 ? named[0] : null);
+    const basis = ct.annualBaseSalary != null ? ` (${ct.gratuityPct ?? "?"}% of base salary ${kina(ct.annualBaseSalary)})` : "";
+    if (!l) notes.push(`${P}: contract for ${ct.employeeName || "an employee"} - gratuity ${kina(g)} a year${basis}`);
+    else if (Math.abs(num(l.Gross) - g) > 1) notes.push(`${P}: the contract gives a gratuity of ${kina(g)} a year${basis}; ${l.EmployeeName || l.EmployeeNo} is claiming ${kina(l.Gross)} gross - check the salary the calculation used${ct.contractStartDate ? ` and that the period runs from the contract start (${ct.contractStartDate})` : ""}`);
+    else notes.push(`${P}: the contract gratuity ${kina(g)} agrees with ${l.EmployeeName || l.EmployeeNo}'s line`);
   }
   (f.unclear || []).forEach(u => notes.push(`${P}: unclear - ${u}`));
   return notes;
@@ -1240,14 +1366,34 @@ async function readPages(idx){
   sc.busy = true; let ok = 0, bad = 0; const failed = [];
   for (const i of idx){
     const p = sc.pages[i]; p.status = "reading"; sc.busyText = `Reading page ${p.n} (${ok + bad + 1} of ${idx.length})…`; keepScroll(render);
-    try { const f = await callReader(p); sc.notes.push(...applyRead(p, f)); p.status = "read"; p.note = ""; ok++; ed.dirty = true; }
+    try {
+      let f = await callReader(p);
+      const turn = [90, 180, 270].includes(f.upright) ? f.upright : 0;
+      if (turn && !p.turned){
+        p.rot = (p.rot + turn) % 360; p.turned = true;
+        sc.busyText = `Page ${p.n} was scanned ${turn === 180 ? "upside down" : "sideways"} - turning it and reading again…`; keepScroll(render);
+        f = await callReader(p); sc.notes.push(`Page ${p.n}: scanned ${turn === 180 ? "upside down" : "sideways"} - turned and read again`);
+      }
+      sc.notes.push(...applyRead(p, f)); p.status = "read"; p.note = ""; ok++; ed.dirty = true; }
     catch(e){ p.status = "error"; p.note = e.message; bad++; failed.push(`Page ${p.n}: ${e.message}`); }
   }
   sc.busy = false; sc.busyText = "";
+  autoKind();
   if (ok && ed.b.Title) logEvent(ed.b.Title, "Read automatically", `${ok} page(s) read${bad ? `, ${bad} failed` : ""}`);
   keepScroll(render);
   if (bad) showError(`${bad} page(s) couldn't be read`, { message: failed.join("\n") }, ok ? `${ok} page(s) were read - check their highlighted values. Press Read automatically on the others to try again.` : "Press Read automatically on a page to try again.");
   else toast(`${ok} page(s) read - check the highlighted values`);
+}
+// Until someone picks the Batch kind, the pages decide it: a Batch Control Form means an agency batch;
+// a minute or endorsement letter without one means an endorsement pack.
+function autoKind(){
+  if (!ed.defaults?.has("BatchKind")) return;
+  const types = ed.scan.pages.filter(p => p.status === "read").map(p => p.type);
+  const kind = types.includes("Batch Control Form") ? "Agency batch" : types.some(t => COVER_TYPES.includes(t)) ? "Endorsement pack" : null;
+  if (!kind || kind === ed.b.BatchKind) return;
+  ed.b.BatchKind = kind; ed.auto.add("BatchKind");
+  ed.scan.notes.push(kind === "Endorsement pack" ? "No Batch Control Form in the pages read, but there is a DPM minute or endorsement letter - entered as an Endorsement pack. Change Batch kind if that's wrong."
+    : "A Batch Control Form is in the scan - entered as an Agency batch.");
 }
 // Split the scan into documents: each run of pages with the same type and employee becomes one PDF
 async function fileScan(){

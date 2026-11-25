@@ -39,6 +39,16 @@ One error anywhere rejects the whole batch.
 - Possible duplicate: the same employee, transaction type and period already in another live batch.
 - Warning when an employee number has a different name elsewhere in the register.
 
+### Endorsement packs
+
+Some packs come from DPM itself: a DPM minute, a Secretary's endorsement letter or a Reference Form A, with the schedules, but no Batch Control Form and often no pink forms. Set **Batch kind** to *Endorsement pack* (a scan sets it automatically). Section 1 then records the cover document instead of the Batch Control Form, and:
+
+- the Batch Control Form fields and the pink form per line aren't required (missing pink forms are a warning);
+- the cover's own figures must add up (gross − tax = net), and its totals must equal the lines when it covers the same number of claims (a warning when it covers more, e.g. some already paid);
+- any other total the cover states, e.g. in the subject line, is listed as a warning.
+
+When the batch includes the Power BI *PE & Budget Monitoring* printout, its budget, spending to date and forecast are kept on the batch. A warning shows when the agency is over budget, and the dashboard shows each agency's latest position.
+
 A Checker can't accept a batch they entered themselves. Every action (created, submitted, accepted, rejected with reasons, returned, resubmitted, document added) is written to `DPM_BatchEvents`.
 
 ## Scanning and reading
@@ -50,6 +60,9 @@ A web page can't drive a scanner. Scan the whole batch to a PDF with the scanner
   - Each page is identified and read, and the values fill empty fields. They stay highlighted until a person checks them.
   - Differences between documents are listed. Examples: a pink form that doesn't match its summary line, a handwritten "Paid", unreadable boxes, invalid dates.
   - A value already on the form is never overwritten; the difference is listed instead.
+  - Pages scanned upside down or sideways are turned upright and read again (and filed upright).
+  - When the Batch Control Form leaves Pay No blank, it is taken from the pink form's Pay Run.
+  - The gratuity on an employment contract is compared with the amount claimed.
 - **File documents:** each run of pages with the same document type and employee is saved as one PDF in `DPM_BatchDocuments/<Agency>/<Batch Ref>/`, with its details. The complete scan can be kept as well.
 
 ## Connecting to SharePoint
