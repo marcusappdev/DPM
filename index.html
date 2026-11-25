@@ -1144,7 +1144,10 @@ function applyRead(pg, f){
     else if (same(cur, v)) return;
     else if (!(typeof v === "number" && Math.abs(num(cur) - v) < 0.005)) notes.push(`${P}: ${FIELD_LABEL(k)} on the page is "${v}", the form has "${cur}" - kept the form's value`);
   };
-  const setAgency = v => { if (!v || isDpmItself(v)) return; const a = matchAgency(v); setB("AgencyName", a ? a.Title : String(v).trim()); if (!a) notes.push(`${P}: agency "${v}" isn't in the Agencies list`); };
+  const setAgency = v => { if (!v || isDpmItself(v)) return; const a = matchAgency(v);
+    // a known agency replaces a shorthand read earlier (e.g. "WSPHA") that isn't in the list
+    if (a && ed.auto.has("AgencyName") && ed.b.AgencyName && !matchAgency(ed.b.AgencyName)){ notes.push(`${P}: agency taken as "${a.Title}" (an earlier page said "${ed.b.AgencyName}")`); ed.b.AgencyName = a.Title; return; }
+    setB("AgencyName", a ? a.Title : String(v).trim()); if (!a) notes.push(`${P}: agency "${v}" isn't in the Agencies list`); };
   const lineFor = (emp, name) => {
     const k = empKey(emp);
     let l = k && ed.lines.find(x => empKey(x.EmployeeNo) === k);
@@ -1243,7 +1246,15 @@ function applyRead(pg, f){
       [["CoverType", pg.type], ["CoverDate", toDate(co.date, notes, `${P} date`)], ["CoverRef", co.reference], ["CoverFrom", co.signedBy]]
         .forEach(([k, v]) => { if (v != null && v !== ""){ ed.b[k] = v; ed.auto.add(k); } });
     } else if (pg.type === ed.b.CoverType){ setB("CoverDate", toDate(co.date, notes, `${P} date`)); setB("CoverRef", co.reference); setB("CoverFrom", co.signedBy); }
-    setB("CoverClaims", co.claimsCount); setB("CoverGross", co.totalGross); setB("CoverTax", co.totalTax); setB("CoverNet", co.totalNet);
+    // the claims count and totals come from the strongest document that states them (a letter's 31 claims over a minute's "8/31")
+    const hasTotals = [co.claimsCount, co.totalGross, co.totalTax, co.totalNet].some(v => v != null);
+    if (hasTotals && rank(pg.type) > (ed.coverTotalsRank || 0)){
+      [["CoverClaims", co.claimsCount], ["CoverGross", co.totalGross], ["CoverTax", co.totalTax], ["CoverNet", co.totalNet]].forEach(([k, v]) => {
+        if (v == null) return;
+        if (ed.b[k] !== "" && ed.b[k] != null && !ed.auto.has(k) && Math.abs(num(ed.b[k]) - num(v)) > 0.005) notes.push(`${P}: ${FIELD_LABEL(k)} on the page is ${v}, the form has ${ed.b[k]} - kept the form's value`);
+        else { ed.b[k] = v; ed.auto.add(k); } });
+      ed.coverTotalsRank = rank(pg.type);
+    } else if (hasTotals){ setB("CoverClaims", co.claimsCount); setB("CoverGross", co.totalGross); setB("CoverTax", co.totalTax); setB("CoverNet", co.totalNet); }
     const tots = [co.totalGross, co.totalTax, co.totalNet, ed.b.CoverGross, ed.b.CoverTax, ed.b.CoverNet].filter(v => v != null && v !== "").map(num);
     (co.otherAmounts || []).forEach(x => {
       if (x?.amount == null || tots.some(t => Math.abs(t - num(x.amount)) < 0.005)) return;
@@ -1387,6 +1398,17 @@ async function readPages(idx){
         p.rot = (p.rot + turn) % 360; p.turned = true;
         sc.busyText = `Page ${p.n} was scanned ${turn === 180 ? "upside down" : "sideways"} - turning it and reading again…`; keepScroll(render);
         f = await callReader(p); sc.notes.push(`Page ${p.n}: scanned ${turn === 180 ? "upside down" : "sideways"} - turned and read again`);
+      }
+      // A Power BI printout is often printed sideways and the reader can't make out the figures:
+      // try it turned a quarter each way and keep the reading that gives a budget
+      if (f.documentType === "PE & Budget Dashboard" && f.budget?.budget == null && !p.turned){
+        p.turned = true; const start = p.rot;
+        for (const q of [90, 270]){
+          p.rot = (start + q) % 360; sc.busyText = `Page ${p.n}: the dashboard figures weren't readable - trying it turned…`; keepScroll(render);
+          const g = await callReader(p);
+          if (g.budget?.budget != null){ f = g; sc.notes.push(`Page ${p.n}: the dashboard was sideways - turned and read again`); break; }
+          p.rot = start;
+        }
       }
       sc.notes.push(...applyRead(p, f)); keepRead(p, f); p.status = "read"; p.note = ""; ok++; ed.dirty = true; }
     catch(e){ p.status = "error"; p.note = e.message; bad++; failed.push(`Page ${p.n}: ${e.message}`); }
