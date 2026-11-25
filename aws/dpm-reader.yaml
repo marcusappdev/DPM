@@ -20,7 +20,7 @@ Parameters:
     Description: Bedrock inference profile for reading pages. au. keeps the pages in Australian regions.
   ReviewModelId:
     Type: String
-    Default: au.anthropic.claude-sonnet-4-5-20250929-v1:0
+    Default: au.anthropic.claude-sonnet-4-6
     Description: Bedrock inference profile for "Review the batch" (text only, once per batch)
   AllowedOrigin:
     Type: String

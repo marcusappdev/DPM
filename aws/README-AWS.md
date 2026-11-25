@@ -35,20 +35,20 @@
 
 ## Adding "Review the batch" to a stack that's already running
 
-The stack needs the updated template, which adds a `ReviewModelId` parameter (Claude Sonnet 4.5, Australia profile). Do this in **CloudShell** (the `>_` icon at the top of the console, region Sydney).
+The stack needs the updated template, which adds a `ReviewModelId` parameter (Claude Sonnet 4.6, Australia profile). Do this in **CloudShell** (the `>_` icon at the top of the console, region Sydney).
 
 1. **Check Sonnet answers.** Paste:
    ```
-   aws bedrock-runtime converse --model-id au.anthropic.claude-sonnet-4-5-20250929-v1:0 --messages '[{"role":"user","content":[{"text":"hello"}]}]' --query 'output.message.content[0].text'
+   aws bedrock-runtime converse --model-id au.anthropic.claude-sonnet-4-6 --messages '[{"role":"user","content":[{"text":"hello"}]}]' --query 'output.message.content[0].text'
    ```
-   It should reply with a greeting. A *ThrottlingException* means the account's Sonnet quota is 0: in **Service Quotas** > **Amazon Bedrock**, look for the *Claude Sonnet 4.5* cross-region requests and tokens per minute and request an increase.
+   It should reply with a greeting. A *ThrottlingException* means the account's Sonnet quota is 0: in **Service Quotas** > **Amazon Bedrock**, look for the *Claude Sonnet 4.6* cross-region requests and tokens per minute and request an increase.
 2. **Get the new template:**
    ```
    curl -sO https://raw.githubusercontent.com/marcusappdev/DPM/main/aws/dpm-reader.yaml
    ```
 3. **Update the stack.** This keeps Haiku for reading pages:
    ```
-   aws cloudformation deploy --stack-name dpm-reader --template-file dpm-reader.yaml --capabilities CAPABILITY_IAM --parameter-overrides ModelId=au.anthropic.claude-haiku-4-5-20251001-v1:0 ReviewModelId=au.anthropic.claude-sonnet-4-5-20250929-v1:0
+   aws cloudformation deploy --stack-name dpm-reader --template-file dpm-reader.yaml --capabilities CAPABILITY_IAM --parameter-overrides ModelId=au.anthropic.claude-haiku-4-5-20251001-v1:0 ReviewModelId=au.anthropic.claude-sonnet-4-6
    ```
    Wait for *Successfully created/updated stack*. The ReadUrl doesn't change, so there's nothing to update in the Hub.
 
