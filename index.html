@@ -1044,7 +1044,7 @@ function readSchema(){
       preparedBy:sS(), preparedDate:sS(), checkedBy:sS(), checkedDate:sS(), validatedBy:sS(), validatedDate:sS(), certifiedBy:sS(), certifiedDate:sS(),
       totalGross:sN(), totalTax:sN(), totalNet:sN(), agencyClaimedGross:sN("only when the page ALSO shows the agency's own claimed total, separate from the DPM validated figures"),
       lines:{ type:"array", items: obj({ employeeNo:sS(), employeeName:sS(), natureOfClaim:sS("e.g. Deceased, Resignation"), paymentCategory:sS("e.g. MILOL, MILOL + MILOF"),
-        periodFrom:sS(), periodTo:sS(), periodAsWritten:sS(), fortnights:sN(), gross:sN(), tax:sN(), net:sN(), taxRateStatedPct:sN("tax % written in the remarks, e.g. Marginal Tax @ 40% -> 40"),
+        periodFrom:sS(), periodTo:sS(), periodAsWritten:sS("this row's period; if the cell has ditto marks or is left blank under a period in the row above, it is the same period - repeat it"), fortnights:sN(), gross:sN(), tax:sN(), net:sN(), taxRateStatedPct:sN("tax % written in the remarks, e.g. Marginal Tax @ 40% -> 40"),
         remarks:sS(), markedPaid:sB("true if 'Paid' has been handwritten or ticked against this employee") }) },
       pageMarkedPaid:sB("true if 'PAID' is handwritten or stamped on the page as a whole (e.g. across the top of a schedule) - it applies to every row on the page") }),
     paymentForm: obj({ employeeNo:sS("Employee Selection #: written ONE character per box, normally 8 boxes - read each box separately, left to right, and keep leading zeros"),
@@ -1092,6 +1092,7 @@ Reading handwriting carefully:
 - Pay codes the Hub knows: ${S.paycodes.map(p => p.Title).join(", ")}. A handwritten code is almost always one of these (e.g. 3 and 2 look alike in AGR35).
 - Dates on these forms are written day / month / year (PNG). Return them as YYYY-MM-DD, with the month in the middle.
 - Copy names letter by letter as written; don't correct spelling.
+- In a table, ditto marks (" or '' or do. or a downward arrow) under a value mean the same value as the row above: write that value into each such row. A period or payment type written once at the top and left blank below applies to the rows below it.
 - "unclear" is only for something WRITTEN that is hard to read. Don't list boxes that are simply blank.
 The Department of Personnel Management (DPM) and its directorates and regions write and receive these documents - they are never the agency. The agency is the one whose employees are being paid.
 Agencies the Hub knows (other names after =): ${S.agencies.map(a => [a.Title, ...lines(a.Aliases).filter(x => x.length <= 45 && !/batch/i.test(x))].join(" = ")).join("; ")}.
