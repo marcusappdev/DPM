@@ -95,9 +95,17 @@ async function token(){
   catch(e){ await msalApp.acquireTokenRedirect({ scopes:CONFIG.SCOPES, account }); }
 }
 // ID token for the Hub's own app registration - the AWS reading service checks it (issuer = this tenant, audience = CLIENT_ID)
-async function idToken(){
-  try { return (await msalApp.acquireTokenSilent({ scopes:["openid","profile"], account })).idToken; }
-  catch(e){ await msalApp.acquireTokenRedirect({ scopes:["openid","profile"], account }); }
+// MSAL hands back the cached ID token even after it has expired (it lasts about an hour), so check its
+// expiry and get a fresh one when it has less than 5 minutes left - or always, when force is true.
+async function idToken(force = false){
+  const req = { scopes:["openid","profile"], account };
+  try {
+    let r = await msalApp.acquireTokenSilent({ ...req, forceRefresh: force });
+    const exp = Number(r.idTokenClaims?.exp || 0) * 1000;
+    if (!force && (!exp || exp - Date.now() < 5 * 60 * 1000)) r = await msalApp.acquireTokenSilent({ ...req, forceRefresh: true });
+    return r.idToken;
+  }
+  catch(e){ await msalApp.acquireTokenRedirect(req); }
 }
 const signIn  = () => msalApp.loginRedirect({ scopes:CONFIG.SCOPES });
 const signOut = () => msalApp.logoutRedirect({ account });

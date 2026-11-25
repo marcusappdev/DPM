@@ -151,7 +151,7 @@ input.auto,select.auto,textarea.auto{background:#fff4cc!important;border-color:#
 <div id="toast" class="toast" role="status"></div>
 
 <script src="shared/dpm-config.js?v=20261122c"></script>
-<script src="shared/dpm-core.js?v=20261122e"></script>
+<script src="shared/dpm-core.js?v=20261125a"></script>
 <script>
 /* =====================================================================
    DPM Document Management Hub  v1.0
@@ -1104,10 +1104,15 @@ async function uprightImage(p){
   x.translate(c.width / 2, c.height / 2); x.rotate(p.rot * Math.PI / 180); x.drawImage(img, -img.width / 2, -img.height / 2);
   p._rotJpg = c.toDataURL("image/jpeg", 0.85); p._rotFor = p.rot; return p._rotJpg;
 }
+// POST to the AWS service with the Hub sign-in; a 401 is retried once with a freshly issued token
+async function callAws(body){
+  const send = async force => fetch(setting("AwsApiUrl"), { method:"POST", headers:{ Authorization:"Bearer " + (DEMO ? "demo" : await idToken(force)), "Content-Type":"application/json" }, body });
+  let r = await send(false);
+  if (r.status === 401 && !DEMO) r = await send(true);
+  return r;
+}
 async function callReader(pg){
-  const tok = DEMO ? "demo" : await idToken();
-  const r = await fetch(setting("AwsApiUrl"), { method:"POST", headers:{ Authorization:"Bearer " + tok, "Content-Type":"application/json" },
-    body: JSON.stringify({ image: (await uprightImage(pg)).split(",")[1], format:"jpeg", schema: readSchema(), instructions: readInstructions(pg) }) });
+  const r = await callAws(JSON.stringify({ image: (await uprightImage(pg)).split(",")[1], format:"jpeg", schema: readSchema(), instructions: readInstructions(pg) }));
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(r.status === 401 ? "the reading service didn't accept your sign-in" : r.status === 429 ? "too many pages at once - wait a moment" : j.error || j.message || `reading service error ${r.status}`);
   return j.fields || {};
@@ -1507,9 +1512,7 @@ async function reviewBatch(){
   if (!ed.lines.some(l => num(l.Gross) > 0) && !readDataOf(ed.b).length) return tell("Enter the payment lines, or read the scan, first.", { title:"Review the batch" });
   ed.revBusy = true; keepScroll(render);
   try {
-    const tok = DEMO ? "demo" : await idToken();
-    const r = await fetch(setting("AwsApiUrl"), { method:"POST", headers:{ Authorization:"Bearer " + tok, "Content-Type":"application/json" },
-      body: JSON.stringify({ mode:"review", text: reviewText(), instructions: REVIEW_INSTRUCTIONS, schema: reviewSchema() }) });
+    const r = await callAws(JSON.stringify({ mode:"review", text: reviewText(), instructions: REVIEW_INSTRUCTIONS, schema: reviewSchema() }));
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(r.status === 401 ? "the reading service didn't accept your sign-in" : r.status === 503 || r.status === 504 ? "the review took longer than 30 seconds - press Review again" : r.status === 400 && /image/i.test(j.error || "") ? "the AWS service hasn't been updated for reviews yet - see aws/README-AWS.md" : j.error || j.message || `review service error ${r.status}`);
     const f = j.fields || {};
