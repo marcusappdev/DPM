@@ -651,7 +651,7 @@ function lineRow(l, i, bad){
 function renderEditor(banner){
   const b = ed.b, can = editable();
   const checks = checkBatch(b, ed.lines, ed.docs);
-  const errs = checks.filter(c => c.sev === "e"), badLines = new Set(errs.filter(c => c.line != null).map(c => c.line));
+  const errs = checks.filter(c => c.sev === "e"), badLines = quietChecks() ? new Set() : new Set(errs.filter(c => c.line != null).map(c => c.line));
   const events = b.Title ? S.events.filter(e => e.Title === b.Title).sort((x, y) => String(y.EventOn).localeCompare(String(x.EventOn))) : [];
   const ownEntry = norm(b.EnteredBy) && norm(b.EnteredBy) === norm(me.name);
   const scanMode = ed.mode === "scan";
@@ -671,7 +671,7 @@ function renderEditor(banner){
       <tfoot><tr><td colspan="10">Totals (${ed.lines.length} line${ed.lines.length === 1 ? "" : "s"})</td><td id="tG">${kina(sumOf(ed.lines, "Gross"))}</td><td id="tT">${kina(sumOf(ed.lines, "Tax"))}</td><td id="tN">${kina(sumOf(ed.lines, "Net"))}</td><td colspan="6"></td></tr></tfoot></table></div>
       ${can ? `<div style="margin-top:10px"><button class="btn" id="addLn">+ Add line</button> <span class="note">Tick <b>Pink ✓</b> when the employee's Special Offline Payment Form is in the batch and matches. Tick <b>Paid?</b> if someone has written "Paid" on it.</span></div>` : ""}</div>
     </div>
-    <div class="sec s-chk" id="chkSec">${isMigrated(b) ? migratedFlagsHtml() : checksHtml(checks)}</div>
+    <div class="sec s-chk" id="chkSec">${isMigrated(b) ? migratedFlagsHtml() : quietChecks() ? quietChecksHtml() : checksHtml(checks)}</div>
     <div class="sec s-docs"><h3>4 · ${scanMode ? "Filed documents" : "Documents"}</h3><div id="docBox">${docsHtml()}</div>
       ${!scanMode && canEnter() && !["Accepted","Superseded"].includes(b.BatchStatus) ? `<p class="note" style="margin-top:12px">Have the scanned batch? <button class="btn sm" id="toScan">Open the scan beside this form</button></p>` : ""}</div>
     ${events.length ? `<div class="sec s-hist"><h3>History</h3><ul class="list hist">${events.map(e => `<li><span class="id mono">${esc(String(e.EventOn || "").replace("T", " "))}</span><span class="x"><b>${esc(e.EventType)}</b> - ${esc(e.EventBy)}${e.Details ? `<div class="note" style="white-space:pre-wrap">${esc(e.Details)}</div>` : ""}</span></li>`).join("")}</ul></div>` : ""}
@@ -694,6 +694,9 @@ function migratedFlagsHtml(){
   const flagged = ed.lines.map((l, i) => ({ l, i })).filter(x => String(x.l.ValidationFlags || "").trim());
   return `<h3>Flags from the migration</h3>${flagged.length ? `<p><b>${flagged.length} line(s) marked Query</b> - check them against the paper documents.</p><ul class="chk">${flagged.map(({ l, i }) => lines(l.ValidationFlags).map(f => `<li class="e"><span class="tag">Query</span><span><span class="rule">Line ${i+1}${l.EmployeeName ? " (" + esc(l.EmployeeName) + ")" : ""}</span> - ${esc(f)}</span></li>`).join("")).join("")}</ul>` : `<p class="okline">✓ Nothing flagged on these lines.</p>`}`;
 }
+// A brand-new batch opens clean: the checks start once something is entered (or read from a scan).
+function quietChecks(){ return !!ed.isNew && !ed.dirty && !ed.b.id; }
+function quietChecksHtml(){ return `<h3>Checks</h3><p class="note">Nothing entered yet. The checks run as you fill in the batch.</p>`; }
 function checksHtml(checks){
   const e = checks.filter(c => c.sev === "e"), w = checks.filter(c => c.sev === "w");
   const li = c => `<li class="${c.sev}"><span class="tag">${c.sev === "e" ? "Error" : "Check"}</span><span><span class="rule">${esc(c.rule)}</span> - ${esc(c.msg)}</span></li>`;
@@ -703,6 +706,7 @@ function checksHtml(checks){
 function actionNote(nErr, own){
   const s = ed.b.BatchStatus || "Draft";
   if (!canEnter()) return "Read only for your role.";
+  if (s === "Draft" && quietChecks()) return "Start with the Batch Control Form. Save as draft at any time.";
   if (s === "Draft") return nErr ? "Save as draft while you enter. It can be submitted once it has no errors, or a Checker can reject it." : "Ready to submit for checking.";
   if (s === "Submitted for check") return canCheck() ? (own ? "You entered this batch - another Checker must accept it." : nErr ? "Errors found - reject the batch and return it to the agency." : "All checks pass - accept or reject.") : "Waiting for a Checker.";
   if (s === "Superseded") return "Superseded - a repeated copy kept for the record; not counted in totals or duplicate checks.";
