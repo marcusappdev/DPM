@@ -796,7 +796,7 @@ function bindEditor(){
     const t = e.target;
     if (t.dataset.f){ ed.b[t.dataset.f] = t.value; ed.auto?.delete(t.dataset.f); ed.defaults?.delete(t.dataset.f); t.classList.remove("auto"); ed.dirty = true;
       if (t.dataset.f === "BatchKind"){ keepScroll(render); return; } refreshChecks(); }
-    else if (t.dataset.l != null){ const l = ed.lines[+t.dataset.l], k = t.dataset.k; l._auto?.delete(k); t.classList.remove("auto");
+    else if (t.dataset.l != null){ const l = ed.lines[+t.dataset.l], k = t.dataset.k; l._auto?.delete(k); l._edited = true; t.classList.remove("auto");
       if (t.type === "checkbox") l[k] = k === "MarkedPaid" ? t.checked : (t.checked ? "Yes" : "No"); else l[k] = t.value;
       // fill net from gross - tax when net is still empty
       if ((k === "Gross" || k === "Tax") && l._autoNet !== false && (l.Net === "" || l._autoNet)){ if (l.Gross !== "" && l.Tax !== ""){ l.Net = r2(num(l.Gross) - num(l.Tax)); l._autoNet = true; const n = form.querySelector(`[data-l="${t.dataset.l}"][data-k="Net"]`); if (n) n.value = l.Net; } }
@@ -1113,6 +1113,13 @@ async function callAws(body){
   if (r.status === 401 && !DEMO) r = await send(true);
   return r;
 }
+// Share of a summary page's lines where net = gross - tax and tax is a believable rate. A table read
+// sideways or upside down gives shifted columns, so most lines fail this.
+function lineSense(f){
+  const ls = (f?.summary?.lines || []).filter(x => x.gross != null);
+  if (ls.length < 2) return 1;
+  return ls.filter(x => Math.abs(num(x.gross) - num(x.tax) - num(x.net)) <= 0.05 && num(x.tax) <= num(x.gross) * 0.45).length / ls.length;
+}
 // Which way is the page turned? A quick question on a small copy of the page, before reading it.
 // (Asked on its own because, while reading, the model will happily read a sideways table - badly.)
 async function smallImage(p, max = 900){
@@ -1122,10 +1129,10 @@ async function smallImage(p, max = 900){
   c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); return c.toDataURL("image/jpeg", 0.8);
 }
 async function pageTurn(p){
-  const r = await callAws(JSON.stringify({ image:(await smallImage(p)).split(",")[1], format:"jpeg",
+  const r = await callAws(JSON.stringify({ image:(await smallImage(p, 1400)).split(",")[1], format:"jpeg",
     schema:{ type:"object", required:["textTop"], properties:{ textTop:{ type:"string", enum:["top","right","bottom","left"],
       description:"which edge of the image the TOP of the writing points to. Normal upright page = top. Upside down = bottom. Writing running up the page from bottom to top = left; running down the page from top to bottom = right." } } },
-    instructions:"Look only at which way the printed writing on this page runs - the main title and the table headings. Don't read the content." }));
+    instructions:"Look only at which way the printed writing on this page runs - the main title, the column headings of any table and the names in it. A table can be printed sideways on the page: then its writing runs up or down the image, not across. Don't read the content." }));
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(r.status === 401 ? "the reading service didn't accept your sign-in" : r.status === 429 ? "too many pages at once - wait a moment" : j.error || `reading service error ${r.status}`);
   return { top:0, right:270, bottom:180, left:90 }[j.fields?.textTop] || 0;   // degrees to turn clockwise
@@ -1176,7 +1183,7 @@ function applyRead(pg, f){
     const k = empKey(emp);
     let l = k && ed.lines.find(x => empKey(x.EmployeeNo) === k);
     if (!l && name) l = ed.lines.find(x => norm(x.EmployeeName) && norm(x.EmployeeName) === norm(name));
-    if (!l){ l = ed.lines.find(x => !x.EmployeeNo && !x.EmployeeName && !x.Gross); if (!l){ l = blankLine(); ed.lines.push(l); } }
+    if (!l){ l = ed.lines.find(x => !x.EmployeeNo && !x.EmployeeName && !x.Gross); if (!l){ l = blankLine(); ed.lines.push(l); } l._fromPage = pg.n; }
     l._auto ||= new Set(); return l;
   };
   const setL = (l, k, v) => {
@@ -1454,6 +1461,24 @@ async function readPages(idx){
           p.rot = start;
         }
       }
+      // a schedule whose sums don't work was probably read the wrong way round: try the other turns, keep the best
+      if (lineSense(f) < 0.6){
+        const start = p.rot; let best = { f, rot:start, s:lineSense(f) };
+        for (const q of [90, 270, 180]){
+          p.rot = (start + q) % 360; sc.busyText = `Page ${p.n}: the figures don't add up - trying the page turned…`; keepScroll(render);
+          const g = await callReader(p), sg = lineSense(g);
+          if (sg > best.s) best = { f:g, rot:p.rot, s:sg };
+          if (sg >= 0.8) break;
+        }
+        p.rot = best.rot; f = best.f;
+        sc.notes.push(best.rot !== start ? `Page ${p.n}: the figures only add up with the page turned - turned and read again` : `Page ${p.n}: net = gross - tax fails on most lines, whichever way the page is turned - check this page by hand`);
+      }
+      // reading a page again replaces the lines it filled last time (unless someone has edited them)
+      if (p.readBefore){
+        const gone = ed.lines.filter(l => l._fromPage === p.n && !l._edited && !l.id);
+        if (gone.length){ ed.lines = ed.lines.filter(l => !gone.includes(l)); if (!ed.lines.length) ed.lines.push(blankLine()); sc.notes.push(`Page ${p.n}: read again - replaced the ${gone.length} line(s) it filled before`); }
+      }
+      p.readBefore = true;
       sc.notes.push(...applyRead(p, f)); keepRead(p, f); p.status = "read"; p.note = ""; ok++; ed.dirty = true; }
     catch(e){ p.status = "error"; p.note = e.message; bad++; failed.push(`Page ${p.n}: ${e.message}`); }
   }
