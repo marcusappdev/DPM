@@ -368,9 +368,7 @@ function checkBatch(b, ls, docs){
     if (b.Title && !pack && !hasDoc("Batch Control Form")) W("Documents", "No scan of the Batch Control Form attached yet");
     if (b.Title && !pack && !hasDoc("DPM Validated Summary")) W("Documents", "No scan of the DPM Validated Summary attached yet");
   }
-  // checks someone has dismissed (or a Checker has overridden) with a reason are left out
-  const gone = new Set(dismissedOf(b).map(d => d.key));
-  return gone.size ? out.filter(c => !gone.has(checkKey(c))) : out;
+  return out;
 }
 
 /* ---------------- header ---------------- */
@@ -548,14 +546,14 @@ const findingKey = f => "r:" + String(f.point || "").slice(0, 400);
 function dismissedOf(b){ try { const d = JSON.parse(b?.Dismissed || "[]"); return Array.isArray(d) ? d : []; } catch { return []; } }
 const isDismissed = (b, key) => dismissedOf(b).some(d => d.key === key);
 function activeFindings(){ const r = reviewData(); return r ? r.findings.filter(f => !isDismissed(ed.b, findingKey(f))) : []; }
-const canDismiss = sev => editable() && (sev !== "e" || canCheck());
+const canDismiss = () => editable();
 function dismissBtn(key, sev, label){
-  if (!canDismiss(sev)) return "";
-  return `<button class="btn sm dis" data-dismiss="${esc(key)}" data-sev="${sev}" data-label="${esc(label)}" title="${sev === "e" ? "Override this error (Checkers only) - give the reason" : "Dismiss - give the reason"}">${sev === "e" ? "Override" : "Dismiss"}</button>`;
+  if (!canDismiss()) return "";
+  return `<button class="btn sm dis" data-dismiss="${esc(key)}" data-sev="w" data-label="${esc(label)}" title="Dismiss this point - give the reason">Dismiss</button>`;
 }
 function dismissedHtml(){
   const d = dismissedOf(ed.b); if (!d.length) return "";
-  return `<details class="rn"><summary>Dismissed or overridden (${d.length})</summary><ul class="chk dism">${d.map((x, i) => `<li class="n"><span class="tag">${esc(x.sevLabel || "Dismissed")}</span><span><s>${linkPages(x.text)}</s>
+  return `<details class="rn"><summary>Dismissed (${d.length})</summary><ul class="chk dism">${d.map((x, i) => `<li class="n"><span class="tag">${esc(x.sevLabel || "Dismissed")}</span><span><s>${linkPages(x.text)}</s>
     <div class="docref">${esc(x.reason)} - ${esc(x.by)}, ${esc(x.on)}</div></span>${editable() ? `<button class="btn sm dis" data-restore="${i}">Restore</button>` : ""}</li>`).join("")}</ul></details>`;
 }
 function dismissDialog(key, sev, label){
@@ -676,7 +674,7 @@ async function printCover(){
     ${table("Errors", ["#", "Check", "Detail"], errs.map((c, i) => `<tr><td>${i + 1}</td><td>${esc(c.rule)}</td><td>${esc(c.msg)}</td></tr>`), "No errors - every check passes.")}
     ${table("Queries", ["#", "Point to query", "Source"], queries.map((f, i) => `<tr><td>${i + 1}</td><td>${esc(f.point)}</td><td>${esc(f.documents || "")}</td></tr>`), reviewData() ? "Nothing to query from the review." : "The batch hasn't been reviewed.")}
     ${table("Checks", ["#", "Item", "Detail / source"], [...warns.map(c => [c.rule, c.msg]), ...others.map(f => [`Review - ${f.severity}`, f.point + (f.documents ? ` (${f.documents})` : "")])].map(([a, m], i) => `<tr><td>${i + 1}</td><td>${esc(a)}</td><td>${esc(m)}</td></tr>`), "Nothing further to check.")}
-    ${dis.length ? table("Dismissed or overridden", ["#", "Item", "Reason", "By / when"], dis.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.text)}</td><td>${esc(x.reason)}</td><td>${esc(x.by)}<br>${esc(x.on)}</td></tr>`), "") : ""}
+    ${dis.length ? table("Dismissed review points", ["#", "Point", "Reason", "By / when"], dis.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.text)}</td><td>${esc(x.reason)}</td><td>${esc(x.by)}<br>${esc(x.on)}</td></tr>`), "") : ""}
     ${rej && b.RejectionReasons ? `<h2>Rejection reasons</h2><p class="pre">${esc(b.RejectionReasons)}</p>` : ""}
     <div class="sign"><div>Checked by<span></span>Date<span class="d"></span></div><div>Accepted / rejected by<span></span>Date<span class="d"></span></div></div>
     <div class="foot">Printed ${esc(TODAY)} ${esc(hhmm(new Date()))} by ${esc(me.name)} · ${esc(BRAND.APP_NAME)} · Scan the barcode into the Batches search box to open this batch.</div></div>`;
@@ -685,7 +683,7 @@ async function printCover(){
   const done = () => { window.removeEventListener("afterprint", done); document.body.classList.remove("printcover"); box.innerHTML = ""; };
   window.addEventListener("afterprint", done);
   await new Promise(r => setTimeout(r, 150)); window.print();
-  if (b.id) logEvent(b.Title, "Cover sheet printed", `${errs.length} error(s), ${queries.length} quer${queries.length === 1 ? "y" : "ies"}, ${warns.length + others.length} check(s), ${dis.length} dismissed`);
+  if (b.id) logEvent(b.Title, "Cover sheet printed", `${errs.length} error(s), ${queries.length} quer${queries.length === 1 ? "y" : "ies"}, ${warns.length + others.length} check(s), ${dis.length} review point(s) dismissed`);
 }
 
 // Why a line is queried (or held): its flags, shown on a row under it
@@ -900,8 +898,8 @@ function lineRow(l, i, bad){
   const t = (k, w, list) => `<input class="${A(k)}" data-l="${i}" data-k="${k}" value="${esc(l[k])}" ${list ? `list="${list}"` : ""} style="${w ? "min-width:" + w + "px" : ""}">`;
   const rate = num(l.Gross) > 0 ? (num(l.Tax) / num(l.Gross) * 100).toFixed(1) + "%" : "";
   return `<tr class="${bad ? "bad" : ""}" data-row="${i}"><td class="rn">${i+1}</td><td>${t("EmployeeNo", 92)}</td><td>${t("EmployeeName", 150)}</td>
-    <td><select class="${A("NatureOfClaim")}" data-l="${i}" data-k="NatureOfClaim"><option></option>${NATURES.map(x => opt(x, l.NatureOfClaim)).join("")}</select></td>
-    <td>${t("PayCode", 70, "dlPay")}</td><td>${t("PaymentCategory", 90)}</td>
+    <td><select class="${A("NatureOfClaim")}" data-l="${i}" data-k="NatureOfClaim" style="min-width:140px"><option></option>${NATURES.map(x => opt(x, l.NatureOfClaim)).join("")}</select></td>
+    <td>${t("PayCode", 80, "dlPay")}</td><td>${t("PaymentCategory", 170)}</td>
     <td><input class="${A("PeriodFrom")}" type="date" data-l="${i}" data-k="PeriodFrom" value="${esc(l.PeriodFrom)}"></td><td><input class="${A("PeriodTo")}" type="date" data-l="${i}" data-k="PeriodTo" value="${esc(l.PeriodTo)}"></td>
     <td>${t("PeriodText", 120)}</td><td>${n("Fortnights", "0.1")}</td><td>${n("Gross")}</td><td>${n("Tax")}</td><td>${n("Net")}</td>
     <td class="mono rate" style="text-align:right">${rate}</td><td>${n("StatedTaxPct", "0.1")}</td>
@@ -1020,9 +1018,9 @@ function quietChecks(){ return !!ed.isNew && !ed.dirty && !ed.b.id; }
 function quietChecksHtml(){ return `<h3>Checks</h3><p class="note">Nothing entered yet. The checks run as you fill in the batch.</p>`; }
 function checksHtml(checks){
   const e = checks.filter(c => c.sev === "e"), w = checks.filter(c => c.sev === "w");
-  const li = c => `<li class="${c.sev}"><span class="tag">${c.sev === "e" ? "Error" : "Check"}</span><span><span class="rule">${esc(c.rule)}</span> - ${linkPages(c.msg)}</span>${dismissBtn(checkKey(c), c.sev, `${c.rule} - ${c.msg}`)}</li>`;
+  const li = c => `<li class="${c.sev}"><span class="tag">${c.sev === "e" ? "Error" : "Check"}</span><span><span class="rule">${esc(c.rule)}</span> - ${linkPages(c.msg)}</span></li>`;
   return `<h3>Checks</h3>${e.length ? `<p><b>${e.length} error(s)</b> - ${setting("RejectWholeBatch", "Yes") === "Yes" ? "the whole batch must be rejected unless these are corrected from the documents" : "these must be fixed"}.</p>` : `<p class="okline">✓ No errors - the batch passes every check.</p>`}
-    <ul class="chk">${e.map(li).join("")}${w.map(li).join("")}</ul>${dismissedHtml()}`;
+    <ul class="chk">${e.map(li).join("")}${w.map(li).join("")}</ul>`;
 }
 function actionNote(nErr, own){
   const s = ed.b.BatchStatus || "Draft";
@@ -1456,6 +1454,9 @@ function applyRead(pg, f){
     const k = empKey(emp);
     let l = k && ed.lines.find(x => empKey(x.EmployeeNo) === k);
     if (!l && name) l = ed.lines.find(x => norm(x.EmployeeName) && norm(x.EmployeeName) === norm(name));
+    // same person, number misread by one digit (e.g. 00825650 / 00835650, "RAKRVA GINI" / "GINI RAKAVA")
+    if (!l && k && name) l = ed.lines.find(x => { const xk = empKey(x.EmployeeNo); return xk && xk.length === k.length && [...xk].filter((c, i) => c !== k[i]).length === 1 && nameMatch(x.EmployeeName, name); });
+    if (!l && k && name) l = ed.lines.find(x => { const xk = empKey(x.EmployeeNo); return xk && xk.length === k.length && [...xk].filter((c, i) => c !== k[i]).length === 1 && nameWords(x.EmployeeName).some(w => nameWords(name).includes(w)); });
     if (!l){ l = ed.lines.find(x => !x.EmployeeNo && !x.EmployeeName && !x.Gross); if (!l){ l = blankLine(); ed.lines.push(l); } l._fromPage = pg.n; }
     l._auto ||= new Set(); return l;
   };
@@ -1813,6 +1814,7 @@ function reviewHtml(){
     : `<p class="note">${canReview() ? "When the batch is entered or read from the scan, <b>Review the batch</b> asks Claude to look across every document for anything to query: figures that don't agree between documents, dates out of order, salaries, rates or periods that don't match the contract or the date someone left, and matters missing from the pack." : "Not reviewed."}</p>`}
     <div class="revbar">${canReview() ? `<button class="btn primary" id="revGo" ${ed.revBusy ? "disabled" : ""}>${ed.revBusy ? "Reviewing… (up to 30 seconds)" : r ? "Review again" : "Review the batch"}</button>` : ""}
       ${r && r.findings.length ? `<button class="btn" id="revCopy">Copy the list</button>` : ""}</div>
+    ${dismissedHtml()}
     ${notes.length ? `<details class="rn"><summary>Notes from reading the scan (${notes.length})</summary><ul>${notes.map(n => `<li>${linkPages(n)}</li>`).join("")}</ul></details>` : ""}`;
 }
 function bindReview(){
@@ -1836,7 +1838,7 @@ function reviewText(){
   P.push(`Totals of the lines: gross ${kina(sumOf(ed.lines, "Gross"))}, tax ${kina(sumOf(ed.lines, "Tax"))}, net ${kina(sumOf(ed.lines, "Net"))}`);
   const checks = checkBatch(b, ed.lines, ed.docs).filter(c => c.rule !== "Read automatically");
   P.push("", "THE HUB'S AUTOMATIC CHECKS ALREADY SHOW (don't repeat these)", ...(checks.map(c => `- ${c.sev === "e" ? "Error" : "Check"}: ${c.rule} - ${c.msg}`)), checks.length ? "" : "- nothing");
-  // what the checker has already looked at and dismissed (or overridden) - the review mustn't raise these again
+  // review points the checker has already looked at and dismissed - the review mustn't raise these again
   const dis = dismissedOf(b);
   if (dis.length) P.push("", "ALREADY LOOKED AT BY THE CHECKER AND DISMISSED - do not raise these again, or anything that is the same point in other words", ...dis.map(d => `- ${d.text} (reason: ${d.reason})`));
   const rd = readDataOf(b);
