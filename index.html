@@ -79,6 +79,31 @@ table.reg tr.why td{white-space:normal;border-top:0;padding-top:0;padding-bottom
 table.reg tr:has(+ tr.why) td{border-bottom:0}
 table.reg .whytag{display:inline-block;font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.3px;background:var(--warn-bg);color:var(--warn);border-radius:4px;padding:1px 6px;margin-right:6px}
 #printHead{display:none}
+.chk .dis{margin-left:auto;flex:none;align-self:flex-start;font-size:12px;padding:2px 10px}
+.chk.dism s{color:var(--muted,#64748b)}
+a.pgref{font-weight:650;text-decoration:underline dotted;cursor:pointer}
+.viewpane.flash{box-shadow:0 0 0 3px var(--accent)}
+#printCover{display:none}
+@media print{
+  body.printcover > *:not(#printCover){display:none!important}
+  body.printcover #printCover{display:block;page:cover}
+}
+@page cover{size:A4 portrait;margin:12mm}
+.cv{font:10pt/1.35 Arial,Helvetica,sans-serif;color:#000}
+.cv .cvhead{display:flex;gap:14px;align-items:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:10px}
+.cv .cvhead img{width:62px}
+.cv .org{font-size:10pt}.cv h1{font-size:15pt;margin:2px 0}.cv .ref{font-size:18pt;font-weight:700;font-family:Consolas,monospace}.cv .st{font-size:10pt}
+.cv .codes{margin-left:auto;display:flex;gap:14px;align-items:flex-end;text-align:center;font-size:8pt}
+.cv .bc svg{display:block;height:46px}.cv .qr svg{display:block;width:78px;height:78px;margin:0 auto}
+.cv .cvcols{display:flex;gap:18px}.cv .kv{width:calc(50% - 9px);border-collapse:collapse;table-layout:fixed}
+.cv .kv th{position:static;background:none;text-align:left;font-weight:400;color:#444;padding:2px 8px 2px 0;width:120px;vertical-align:top;white-space:normal}.cv .kv td{padding:2px 0;font-weight:600;word-wrap:break-word}
+.cv .ct th{position:static}
+.cv h2{font-size:11pt;margin:12px 0 4px;border-bottom:1px solid #000}
+.cv .ct{width:100%;border-collapse:collapse;font-size:9pt}.cv .ct th,.cv .ct td{border:1px solid #999;padding:3px 5px;text-align:left;vertical-align:top}
+.cv .ct th{background:#eee}.cv .ct td:first-child{width:18px;text-align:right}.cv .ct tr{break-inside:avoid}
+.cv .none{color:#444;font-style:italic;margin:2px 0}.cv .pre{white-space:pre-wrap}
+.cv .sign{display:flex;gap:30px;margin-top:22px}.cv .sign div{flex:1}.cv .sign span{display:inline-block;border-bottom:1px solid #000;width:45%;margin:0 6px;height:14px}.cv .sign span.d{width:18%}
+.cv .foot{margin-top:14px;font-size:8pt;color:#444;border-top:1px solid #999;padding-top:4px}
 @media print{
   @page{size:A4 landscape;margin:10mm}
   header,.banner,.bar,.toast,dialog{display:none!important}
@@ -343,7 +368,9 @@ function checkBatch(b, ls, docs){
     if (b.Title && !pack && !hasDoc("Batch Control Form")) W("Documents", "No scan of the Batch Control Form attached yet");
     if (b.Title && !pack && !hasDoc("DPM Validated Summary")) W("Documents", "No scan of the DPM Validated Summary attached yet");
   }
-  return out;
+  // checks someone has dismissed (or a Checker has overridden) with a reason are left out
+  const gone = new Set(dismissedOf(b).map(d => d.key));
+  return gone.size ? out.filter(c => !gone.has(checkKey(c))) : out;
 }
 
 /* ---------------- header ---------------- */
@@ -365,6 +392,8 @@ function route(){
   const h = location.hash.slice(1) || "dash";
   if (h === "scan/new"){ openBatch("new", "scan"); return; }
   if (h.startsWith("batch/")){ const id = decodeURIComponent(h.slice(6)); openBatch(id); return; }
+  if (h.startsWith("ref/")){ const ref = decodeURIComponent(h.slice(4)).trim().toUpperCase(), b = S.batches.find(x => String(x.Title).toUpperCase() === ref);
+    if (b){ history.replaceState(null, "", "#batch/" + encodeURIComponent(b.id)); openBatch(b.id); } else { tell(`No batch ${ref} was found.`); location.hash = "batches"; } return; }
   view = ["dash","batches","register","ref","settings"].includes(h) ? h : "dash"; ed = null; render();
 }
 function render(){
@@ -510,6 +539,155 @@ function viewRegister(){
     ${rows.length ? `<tr class="rowsum"><td colspan="6">${rows.length} line(s)${rows.length > 1000 && !F.r.printAll ? " - first 1,000 shown; Print and Export include all" : ""}${esc(supNote)}</td><td class="mono r">${tot("Gross")}</td><td class="mono r">${tot("Tax")}</td><td class="mono r">${tot("Net")}</td><td colspan="2"></td></tr>` : ""}</tbody></table></div>`;
 }
 // What the printout covers, in words
+/* =====================================================================
+   DISMISSING CHECKS AND REVIEW POINTS - once the truth is established or the data corrected.
+   Kept on the batch (Dismissed, JSON) with who, when and why; only a Checker can override an Error.
+   ===================================================================== */
+const checkKey = c => "c:" + c.rule + "|" + c.msg;
+const findingKey = f => "r:" + String(f.point || "").slice(0, 400);
+function dismissedOf(b){ try { const d = JSON.parse(b?.Dismissed || "[]"); return Array.isArray(d) ? d : []; } catch { return []; } }
+const isDismissed = (b, key) => dismissedOf(b).some(d => d.key === key);
+function activeFindings(){ const r = reviewData(); return r ? r.findings.filter(f => !isDismissed(ed.b, findingKey(f))) : []; }
+const canDismiss = sev => editable() && (sev !== "e" || canCheck());
+function dismissBtn(key, sev, label){
+  if (!canDismiss(sev)) return "";
+  return `<button class="btn sm dis" data-dismiss="${esc(key)}" data-sev="${sev}" data-label="${esc(label)}" title="${sev === "e" ? "Override this error (Checkers only) - give the reason" : "Dismiss - give the reason"}">${sev === "e" ? "Override" : "Dismiss"}</button>`;
+}
+function dismissedHtml(){
+  const d = dismissedOf(ed.b); if (!d.length) return "";
+  return `<details class="rn"><summary>Dismissed or overridden (${d.length})</summary><ul class="chk dism">${d.map((x, i) => `<li class="n"><span class="tag">${esc(x.sevLabel || "Dismissed")}</span><span><s>${linkPages(x.text)}</s>
+    <div class="docref">${esc(x.reason)} - ${esc(x.by)}, ${esc(x.on)}</div></span>${editable() ? `<button class="btn sm dis" data-restore="${i}">Restore</button>` : ""}</li>`).join("")}</ul></details>`;
+}
+function dismissDialog(key, sev, label){
+  const d = $("#dlg"), over = sev === "e";
+  d.innerHTML = `<div class="dh"><div class="dt"><span class="kind" style="background:${over ? "var(--crit)" : "var(--accent)"}">${over ? "Override error" : "Dismiss"}</span><h2>Why is this not a problem?</h2></div></div>
+    <div class="db"><p style="margin-top:0">${esc(label)}</p>
+      <label class="fld"><span class="req">Reason</span><select id="dsQ"><option value="">Choose, or type the reason below…</option>
+        <option>Data corrected from the documents</option><option>Checked against the scan - it was read correctly</option><option>Checked against the scan - a misreading, not on the document</option>
+        <option>Confirmed with the agency</option><option>Accepted under DPM policy</option></select></label>
+      <label class="fld" style="margin-top:10px"><span>Details (optional)</span><textarea id="dsR" style="min-height:70px"></textarea></label>
+      ${over ? `<p class="note">An overridden error no longer stops the batch being accepted. It's recorded in the batch history and on its cover sheet.</p>` : ""}</div>
+    <div class="df"><button class="btn" id="dsX">Cancel</button><button class="btn primary" id="dsS">${over ? "Override" : "Dismiss"}</button></div>`;
+  d.showModal();
+  $("#dsX").onclick = () => d.close();
+  $("#dsS").onclick = async () => {
+    const reason = [$("#dsQ").value, $("#dsR").value.trim()].filter(Boolean).join(" - ");
+    if (!reason){ $("#dsQ").focus(); return; }
+    d.close();
+    const list = dismissedOf(ed.b).filter(x => x.key !== key);
+    list.push({ key, sevLabel: over ? "Overridden" : key.startsWith("r:") ? "Review point" : "Check", text: label, reason, by: me.name, on: `${TODAY} ${hhmm(new Date())}` });
+    ed.b.Dismissed = JSON.stringify(list); ed.dirty = true;
+    await keepDismissals(over ? "Overridden" : "Dismissed", `${label}\nReason: ${reason}`);
+  };
+}
+async function restoreDismissed(i){
+  const list = dismissedOf(ed.b), [x] = list.splice(i, 1); if (!x) return;
+  ed.b.Dismissed = JSON.stringify(list); ed.dirty = true;
+  await keepDismissals("Restored", x.text);
+}
+// saved straight away when the batch is already saved; a new batch keeps it until it's first saved
+async function keepDismissals(event, details){
+  if (ed.b.id && editable()) await saveBatch(null, { event, details });
+  else { keepScroll(render); toast("Save the batch to keep it"); }
+}
+
+// "Batch Control Form p2; schedules p5-6" -> each page number becomes a link that shows the page beside the form
+const linkPages = t => esc(t).replace(/\b(pages?|pp?\.?)\s?(\d{1,3})((?:\s*(?:-|–|,|&amp;|and)\s*(?:pp?\.?\s?)?\d{1,3})*)/gi,
+  m => m.replace(/\d{1,3}/g, n => `<a href="#" class="pgref" data-pg="${n}" title="Show page ${n} beside the form">${n}</a>`));
+async function goToPage(n){
+  if (!ed) return;
+  const sc = ed.scan;
+  if (!sc.pages.length){
+    const full = filedScanDoc();
+    if (!full) return tell(`The scan isn't open. Press "Open the scan beside this form" and load the batch's PDF - the page links then show the page.`, { title:`Page ${n}` });
+    await openFiledScan(full); if (!sc.pages.length) return;
+  }
+  if (+n > sc.pages.length) return tell(`The scan has ${sc.pages.length} page(s) - there's no page ${n}.`, { title:`Page ${n}` });
+  ed.mode = "scan"; sc.view = +n - 1; keepScroll(render);
+  const v = $(".viewpane"); v?.classList.add("flash"); setTimeout(() => v?.classList.remove("flash"), 900);
+}
+// the complete scan kept with the batch ("keep the complete scan too" when filing)
+const filedScanDoc = () => (ed?.docs || []).find(d => /complete scan/i.test(d.FileLeafRef || d._drive?.name || d.name || ""));
+async function openFiledScan(d){
+  try {
+    let blob, name = d.FileLeafRef || d._drive?.name || "scan.pdf";
+    if (DEMO || !d._drive) blob = await (await fetch(d.url)).blob();
+    else {
+      const meta = await graph(`/drives/${d._drive.parentReference?.driveId || docDrive}/items/${d._drive.id}`);
+      blob = await (await fetch(meta["@microsoft.graph.downloadUrl"])).blob(); name = meta.name || name;
+    }
+    await loadScanFiles([new File([blob], name, { type: blob.type || "application/pdf" })]);
+  } catch(e){ showError("Couldn't open the filed scan", e, "Open it from the Documents list instead."); }
+}
+// one click handler for the editor: page links, dismiss, restore, show the filed scan
+let editorClicksBound = false;
+function bindEditorClicks(){
+  if (editorClicksBound) return; editorClicksBound = true;
+  $("#main").addEventListener("click", e => {
+    if (!ed) return;
+    const pg = e.target.closest("[data-pg]"); if (pg){ e.preventDefault(); goToPage(pg.dataset.pg); return; }
+    const ds = e.target.closest("[data-dismiss]"); if (ds){ e.preventDefault(); dismissDialog(ds.dataset.dismiss, ds.dataset.sev, ds.dataset.label); return; }
+    const rs = e.target.closest("[data-restore]"); if (rs){ e.preventDefault(); restoreDismissed(+rs.dataset.restore); return; }
+    if (e.target.id === "openFiled"){ const d = filedScanDoc(); if (d) openFiledScan(d).then(() => { if (ed?.scan.pages.length){ ed.mode = "scan"; render(); } }); }
+  });
+}
+
+/* =====================================================================
+   BATCH COVER SHEET - printed once the batch is checked: details and totals, then tables of
+   errors, queries, checks and what was dismissed; the Batch Ref as a barcode and a QR link.
+   ===================================================================== */
+const C128 = "212222,222122,222221,121223,121322,131222,122213,122312,132212,221213,221312,231212,112232,122132,122231,113222,123122,123221,223211,221132,221231,213212,223112,312131,311222,321122,321221,312212,322112,322211,212123,212321,232121,111323,131123,131321,112313,132113,132311,211313,231113,231311,112133,112331,132131,113123,113321,133121,313121,211331,231131,213113,213311,213131,311123,311321,331121,312113,312311,332111,314111,221411,431111,111224,111422,121124,121421,141122,141221,112214,112412,122114,122411,142112,142211,241211,221114,413111,241112,134111,111242,121142,121241,114212,124112,124211,411212,421112,421211,212141,214121,412121,111143,111341,131141,114113,114311,411113,411311,113141,114131,311141,411131,211412,211214,211232".split(",");
+// Code 128 (set B) as SVG - a handheld scanner reads it back as the Batch Ref
+function code128Svg(text, h = 46){
+  const codes = [104, ...[...String(text)].map(ch => ch.charCodeAt(0) - 32)];
+  const chk = codes.reduce((sum, c, i) => sum + c * (i || 1), 0) % 103;
+  const pat = [...codes, chk].map(c => C128[c]).join("") + "2331112";
+  let x = 12, bars = "";
+  [...pat].forEach((w, i) => { w = +w * 1.6; if (i % 2 === 0) bars += `<rect x="${x.toFixed(1)}" y="0" width="${w.toFixed(1)}" height="${h}"/>`; x += w; });
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${(x + 12).toFixed(0)}" height="${h}" viewBox="0 0 ${(x + 12).toFixed(1)} ${h}">${bars}</svg>`;
+}
+let qrLib = null;   // shared/qrcode.js = qrcode-generator 1.4.4 (MIT licence, Kazuhiko Arase)
+async function loadQr(){
+  if (qrLib) return qrLib;
+  await new Promise((ok, no) => { const sc = document.createElement("script"); sc.src = "shared/qrcode.js"; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); });
+  return (qrLib = window.qrcode);
+}
+const batchLink = b => `${location.origin}${location.pathname}#ref/${encodeURIComponent(b.Title)}`;
+async function printCover(){
+  const b = ed.b; if (!b.Title) return tell("Save the batch first - the cover sheet carries its Batch Ref.", { title:"Cover sheet" });
+  let qr = "";
+  try { const q = (await loadQr())(0, "M"); q.addData(batchLink(b)); q.make(); qr = q.createSvgTag({ cellSize:3, margin:0 }); } catch {}
+  const all = checkBatch(b, ed.lines, ed.docs), errs = all.filter(c => c.sev === "e"), warns = all.filter(c => c.sev === "w" && c.rule !== "Read automatically");
+  const fs = activeFindings(), queries = fs.filter(f => f.severity === "Query"), others = fs.filter(f => f.severity !== "Query"), dis = dismissedOf(b);
+  const row = (k, v) => v === "" || v == null || v === false ? "" : `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`;
+  const join = (...a) => a.filter(Boolean).join(" · ");
+  const table = (title, head, rows, empty) => `<h2>${esc(title)} (${rows.length})</h2>${rows.length ? `<table class="ct"><thead><tr>${head.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>` : `<p class="none">${esc(empty)}</p>`}`;
+  const pack = isPack(b), st = b.BatchStatus || "Draft", rej = st === "Rejected" || st === "Returned to agency";
+  const html = `<div class="cv">
+    <div class="cvhead"><img src="shared/dpm-crest.png" alt=""><div><div class="org">${esc(setting("OrganisationName", BRAND.ORGANISATION))}</div><h1>Batch Cover Sheet</h1>
+      <div class="ref">${esc(b.Title)}</div><div class="st">${esc(join(st, isFast(b) && "Fast entry", pack && "Endorsement pack"))}</div></div>
+      <div class="codes"><div class="bc">${code128Svg(b.Title)}<div>${esc(b.Title)}</div></div>${qr ? `<div class="qr">${qr}<div>Open in the Hub</div></div>` : ""}</div></div>
+    <div class="cvcols"><table class="kv">${row("Agency", b.AgencyName)}${row("Transaction type", b.TransactionType)}${row("Pay No", b.PayNo)}${row("Pay date", b.PayDate && fmtDate(b.PayDate))}
+      ${pack ? row("Cover document", join(b.CoverType, b.CoverRef, b.CoverDate && fmtDate(b.CoverDate))) : row("Batch number", b.BatchNumber) + row("Raised by", join(b.RaisedBy, b.RaisedDate && fmtDate(b.RaisedDate)))}
+      ${row("Received by DPM", b.ReceivedDate && fmtDate(b.ReceivedDate))}</table>
+      <table class="kv">${row("Payment lines", String(ed.lines.length))}${row("Gross", kina(sumOf(ed.lines, "Gross")))}${row("Tax", kina(sumOf(ed.lines, "Tax")))}${row("Net", kina(sumOf(ed.lines, "Net")))}
+      ${row("Entered", join(b.EnteredBy, b.EnteredDate && fmtDate(b.EnteredDate)))}${row("Reviewed", join(b.ReviewedBy, b.ReviewedOn))}
+      ${row(rej ? "Rejected" : "Accepted", join(b.AcceptedBy, b.AcceptedDate && fmtDate(b.AcceptedDate)))}</table></div>
+    ${table("Errors", ["#", "Check", "Detail"], errs.map((c, i) => `<tr><td>${i + 1}</td><td>${esc(c.rule)}</td><td>${esc(c.msg)}</td></tr>`), "No errors - every check passes.")}
+    ${table("Queries", ["#", "Point to query", "Source"], queries.map((f, i) => `<tr><td>${i + 1}</td><td>${esc(f.point)}</td><td>${esc(f.documents || "")}</td></tr>`), reviewData() ? "Nothing to query from the review." : "The batch hasn't been reviewed.")}
+    ${table("Checks", ["#", "Item", "Detail / source"], [...warns.map(c => [c.rule, c.msg]), ...others.map(f => [`Review - ${f.severity}`, f.point + (f.documents ? ` (${f.documents})` : "")])].map(([a, m], i) => `<tr><td>${i + 1}</td><td>${esc(a)}</td><td>${esc(m)}</td></tr>`), "Nothing further to check.")}
+    ${dis.length ? table("Dismissed or overridden", ["#", "Item", "Reason", "By / when"], dis.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.text)}</td><td>${esc(x.reason)}</td><td>${esc(x.by)}<br>${esc(x.on)}</td></tr>`), "") : ""}
+    ${rej && b.RejectionReasons ? `<h2>Rejection reasons</h2><p class="pre">${esc(b.RejectionReasons)}</p>` : ""}
+    <div class="sign"><div>Checked by<span></span>Date<span class="d"></span></div><div>Accepted / rejected by<span></span>Date<span class="d"></span></div></div>
+    <div class="foot">Printed ${esc(TODAY)} ${esc(hhmm(new Date()))} by ${esc(me.name)} · ${esc(BRAND.APP_NAME)} · Scan the barcode into the Batches search box to open this batch.</div></div>`;
+  let box = $("#printCover"); if (!box){ box = document.createElement("div"); box.id = "printCover"; document.body.appendChild(box); }
+  box.innerHTML = html; document.body.classList.add("printcover");
+  const done = () => { window.removeEventListener("afterprint", done); document.body.classList.remove("printcover"); box.innerHTML = ""; };
+  window.addEventListener("afterprint", done);
+  await new Promise(r => setTimeout(r, 150)); window.print();
+  if (b.id) logEvent(b.Title, "Cover sheet printed", `${errs.length} error(s), ${queries.length} quer${queries.length === 1 ? "y" : "ies"}, ${warns.length + others.length} check(s), ${dis.length} dismissed`);
+}
+
 // Why a line is queried (or held): its flags, shown on a row under it
 function whyText(l){
   return lines(l.ValidationFlags).join("; ") || (l.LineStatus === "Held - marked paid" ? 'Marked "Paid" by hand - held'
@@ -651,6 +829,9 @@ function bindView(){
   on("dWeek", e => { F.d.week = e.target.value; render(); });
   on("dAg", e => { F.d.agency = e.target.value; render(); });
   on("bQ", e => { F.b.q = e.target.value; renderKeep("bQ"); });
+  // a barcode scanner types the Batch Ref and presses Enter: open that batch
+  $("#bQ")?.addEventListener("keydown", e => { if (e.key !== "Enter") return; const ref = e.target.value.trim().toUpperCase(), b = S.batches.find(x => String(x.Title).toUpperCase() === ref);
+    if (b){ F.b.q = ""; location.hash = "batch/" + encodeURIComponent(b.id); } });
   on("bWeek", e => { F.b.week = e.target.value; render(); });
   on("rQ", e => { F.r.q = e.target.value; renderKeep("rQ"); });
   on("rAg", e => { F.r.agency = e.target.value; render(); });
@@ -760,7 +941,8 @@ function renderEditor(banner){
     <div class="sec s-chk" id="chkSec">${isMigrated(b) ? migratedFlagsHtml() : quietChecks() ? quietChecksHtml() : checksHtml(checks)}</div>
     ${reviewShown() ? `<div class="sec s-rev" id="revSec">${reviewHtml()}</div>` : ""}
     <div class="sec s-docs"><h3>4 · ${scanMode ? "Filed documents" : "Documents"}</h3><div id="docBox">${docsHtml()}</div>
-      ${!scanMode && canEnter() && !["Accepted","Superseded"].includes(b.BatchStatus) ? `<p class="note" style="margin-top:12px">Have the scanned batch? <button class="btn sm" id="toScan">Open the scan beside this form</button></p>` : ""}</div>
+      ${!scanMode && filedScanDoc() ? `<p class="note" style="margin-top:12px">The complete scan is filed with this batch. <button class="btn sm" id="openFiled">Show it beside the form</button> - the page links in the checks and review then go to that page.</p>`
+        : !scanMode && canEnter() && !["Accepted","Superseded"].includes(b.BatchStatus) ? `<p class="note" style="margin-top:12px">Have the scanned batch? <button class="btn sm" id="toScan">Open the scan beside this form</button></p>` : ""}</div>
     ${events.length ? `<div class="sec s-hist"><h3>History</h3><ul class="list hist">${events.map(e => `<li><span class="id mono">${esc(String(e.EventOn || "").replace("T", " "))}</span><span class="x"><b>${esc(e.EventType)}</b> - ${esc(e.EventBy)}${e.Details ? `<div class="note" style="white-space:pre-wrap">${esc(e.Details)}</div>` : ""}</span></li>`).join("")}</ul></div>` : ""}
     <div class="actions"><span class="note" id="actNote">${actionNote(errs.length, ownEntry)}</span><span class="grow"></span>${actionButtons(errs.length, ownEntry)}</div>`;
   const lists = `<datalist id="dlAg">${S.agencies.filter(a => a.AgencyActive !== "No").map(a => `<option value="${esc(a.Title)}">`).join("")}</datalist>
@@ -838,9 +1020,9 @@ function quietChecks(){ return !!ed.isNew && !ed.dirty && !ed.b.id; }
 function quietChecksHtml(){ return `<h3>Checks</h3><p class="note">Nothing entered yet. The checks run as you fill in the batch.</p>`; }
 function checksHtml(checks){
   const e = checks.filter(c => c.sev === "e"), w = checks.filter(c => c.sev === "w");
-  const li = c => `<li class="${c.sev}"><span class="tag">${c.sev === "e" ? "Error" : "Check"}</span><span><span class="rule">${esc(c.rule)}</span> - ${esc(c.msg)}</span></li>`;
+  const li = c => `<li class="${c.sev}"><span class="tag">${c.sev === "e" ? "Error" : "Check"}</span><span><span class="rule">${esc(c.rule)}</span> - ${linkPages(c.msg)}</span>${dismissBtn(checkKey(c), c.sev, `${c.rule} - ${c.msg}`)}</li>`;
   return `<h3>Checks</h3>${e.length ? `<p><b>${e.length} error(s)</b> - ${setting("RejectWholeBatch", "Yes") === "Yes" ? "the whole batch must be rejected unless these are corrected from the documents" : "these must be fixed"}.</p>` : `<p class="okline">✓ No errors - the batch passes every check.</p>`}
-    <ul class="chk">${e.map(li).join("")}${w.map(li).join("")}</ul>`;
+    <ul class="chk">${e.map(li).join("")}${w.map(li).join("")}</ul>${dismissedHtml()}`;
 }
 function actionNote(nErr, own){
   const s = ed.b.BatchStatus || "Draft";
@@ -858,6 +1040,7 @@ function actionButtons(nErr, own){
   if (canCheck() && ["Draft","Submitted for check"].includes(s) && ed.b.Title) out.push(`<button class="btn danger" id="aReject">Reject batch…</button>`);
   if (canCheck() && s === "Submitted for check") out.push(`<button class="btn primary" id="aAccept" ${nErr || own ? "disabled" : ""} title="${own ? "You can't accept a batch you entered" : nErr ? "Every check must pass" : ""}">Accept</button>`);
   if (canEnter() && s === "Rejected") out.push(`<button class="btn" id="aReturn">Mark returned to agency</button>`);
+  if (ed.b.Title) out.unshift(`<button class="btn" id="aCover" title="Print the batch cover sheet - details, errors, queries, checks and a barcode">Cover sheet</button>`);
   if (canEnter() && ["Rejected","Returned to agency"].includes(s)) out.push(`<button class="btn primary" id="aResub">Enter resubmission</button>`);
   return out.join(" ");
 }
@@ -903,6 +1086,8 @@ function bindEditor(){
   $("#aReject")?.addEventListener("click", rejectDialog);
   $("#aReturn")?.addEventListener("click", async () => { ed.b.ReturnedDate = TODAY; await saveBatch("Returned to agency", { event:"Returned to agency" }); });
   $("#aResub")?.addEventListener("click", startResubmission);
+  $("#aCover")?.addEventListener("click", printCover);
+  bindEditorClicks();
   bindDocs(); bindScan(); bindReview();
   $("#toScan")?.addEventListener("click", () => { ed.mode = "scan"; render(); scrollTo(0, 0); });
   $("#fastTg")?.addEventListener("change", e => { ed.fast = e.target.checked; setFastPref(ed.fast); ed.b.CaptureMethod = ed.fast ? FAST : "Manual entry"; keepScroll(render); });
@@ -933,7 +1118,7 @@ const B_FIELDS = ["AgencyName","BatchNumber","PayNo","PayDate","FormType","Numbe
   "TotalGross","TotalTax","TotalNet","AgencyClaimedGross","ReceivedDate","BatchStatus",
   "BatchKind","CoverType","CoverRef","CoverDate","CoverFrom","CoverClaims","CoverGross","CoverTax","CoverNet","CoverOtherAmounts",
   "BudgetLabel","BudgetPayNo","BudgetAmount","BudgetSpent","BudgetForecast","BudgetPrinted",
-  "ReadNotes","ReadData","ReviewFindings","ReviewedOn","ReviewedBy","RejectionReasons","ReturnedDate","ResubmissionOf","EnteredBy","EnteredDate","VerifiedBy","VerifiedDate","AcceptedBy","AcceptedDate","CaptureMethod","BatchNotes"];
+  "ReadNotes","ReadData","ReviewFindings","ReviewedOn","ReviewedBy","Dismissed","RejectionReasons","ReturnedDate","ResubmissionOf","EnteredBy","EnteredDate","VerifiedBy","VerifiedDate","AcceptedBy","AcceptedDate","CaptureMethod","BatchNotes"];
 const L_FIELDS = ["EmployeeNo","EmployeeName","NatureOfClaim","PaymentCategory","PayCode","PeriodFrom","PeriodTo","PeriodText","Fortnights","Gross","Tax","Net","StatedTaxPct","PinkFormMatched","Remarks","AgencyClaimedGross","AgencyClaimedTax","AgencyClaimedNet","Designation","GradeStep","Reason","PeriodEndDate"];
 const NUMERIC = new Set(["CoverClaims","CoverGross","CoverTax","CoverNet","BudgetAmount","BudgetSpent","BudgetForecast","NumberOfForms","TotalGross","TotalTax","TotalNet","AgencyClaimedGross","Fortnights","Gross","Tax","Net","StatedTaxPct","AgencyClaimedTax","AgencyClaimedNet","TaxRatePct","LineCount"]);
 function clean(obj, keys){ const o = {}; keys.forEach(k => { let v = obj[k]; if (v === undefined) return; if (NUMERIC.has(k)) v = v === "" || v == null ? null : num(v); else v = v == null ? "" : String(v); o[k] = v; }); return o; }
@@ -999,7 +1184,7 @@ function rejectDialog(){
   const d = $("#dlg");
   d.innerHTML = `<div class="dh"><div class="dt"><span class="kind" style="background:var(--crit)">Reject batch</span><h2>${esc(ed.b.Title)}</h2></div></div>
     <div class="db"><p class="note">${setting("RejectWholeBatch", "Yes") === "Yes" ? "One bad form rejects the whole batch. " : ""}The reasons are kept on the batch, in its history and on the dashboard. Edit them as needed - one per line.</p>
-      <label class="fld"><span class="req">Reasons</span><textarea id="rjR" style="min-height:180px">${esc([...errs.map(c => `[${c.rule}] - ${c.msg}`), ...(reviewData()?.findings || []).filter(f => f.severity === "Query").map(f => `[Review] - ${f.point}`)].join("\n"))}</textarea></label></div>
+      <label class="fld"><span class="req">Reasons</span><textarea id="rjR" style="min-height:180px">${esc([...errs.map(c => `[${c.rule}] - ${c.msg}`), ...activeFindings().filter(f => f.severity === "Query").map(f => `[Review] - ${f.point}`)].join("\n"))}</textarea></label></div>
     <div class="df"><button class="btn" id="rjX">Cancel</button><button class="btn primary" id="rjS" style="background:var(--crit);border-color:var(--crit)">Reject batch</button></div>`;
   d.showModal();
   $("#rjX").onclick = () => d.close();
@@ -1623,17 +1808,17 @@ const reviewShown = () => !quietChecks() && (reviewData() || lines(ed.b.ReadNote
 function reviewHtml(){
   const r = reviewData(), notes = lines(ed.b.ReadNotes), cls = { Query:"e", Check:"w", Note:"n" };
   return `<h3>Points to query <span class="note" style="text-transform:none;letter-spacing:0;font-weight:400">Claude's review of the whole batch - suggestions for the Checker, not decisions</span></h3>
-    ${r ? `${r.summary ? `<p>${esc(r.summary)}</p>` : ""}<ul class="chk">${r.findings.map(f => `<li class="${cls[f.severity] || "w"}"><span class="tag">${esc(f.severity || "Check")}</span><span>${esc(f.point)}${f.documents ? `<div class="docref">${esc(f.documents)}</div>` : ""}</span></li>`).join("") || `<li><span class="okline">Nothing further to query.</span></li>`}</ul>
+    ${r ? `${r.summary ? `<p>${esc(r.summary)}</p>` : ""}<ul class="chk">${activeFindings().map(f => `<li class="${cls[f.severity] || "w"}"><span class="tag">${esc(f.severity || "Check")}</span><span>${linkPages(f.point)}${f.documents ? `<div class="docref">${linkPages(f.documents)}</div>` : ""}</span>${dismissBtn(findingKey(f), "w", f.point)}</li>`).join("") || `<li><span class="okline">Nothing further to query.</span></li>`}</ul>
       <p class="note" style="margin-top:8px">Reviewed ${esc(r.at || "")} by ${esc(r.by || "")}. ${ed.dirty ? " Save the batch to keep it." : " Saved with the batch."}</p>`
     : `<p class="note">${canReview() ? "When the batch is entered or read from the scan, <b>Review the batch</b> asks Claude to look across every document for anything to query: figures that don't agree between documents, dates out of order, salaries, rates or periods that don't match the contract or the date someone left, and matters missing from the pack." : "Not reviewed."}</p>`}
     <div class="revbar">${canReview() ? `<button class="btn primary" id="revGo" ${ed.revBusy ? "disabled" : ""}>${ed.revBusy ? "Reviewing… (up to 30 seconds)" : r ? "Review again" : "Review the batch"}</button>` : ""}
       ${r && r.findings.length ? `<button class="btn" id="revCopy">Copy the list</button>` : ""}</div>
-    ${notes.length ? `<details class="rn"><summary>Notes from reading the scan (${notes.length})</summary><ul>${notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></details>` : ""}`;
+    ${notes.length ? `<details class="rn"><summary>Notes from reading the scan (${notes.length})</summary><ul>${notes.map(n => `<li>${linkPages(n)}</li>`).join("")}</ul></details>` : ""}`;
 }
 function bindReview(){
   $("#revGo")?.addEventListener("click", reviewBatch);
   $("#revCopy")?.addEventListener("click", e => { const r = reviewData(); if (!r) return;
-    copyText(`${ed.b.Title || "New batch"} - ${ed.b.AgencyName || ""}\nPoints to query\n\n${r.findings.map((f, i) => `${i + 1}. ${f.point}${f.documents ? ` (${f.documents})` : ""}`).join("\n")}`, e.target); });
+    copyText(`${ed.b.Title || "New batch"} - ${ed.b.AgencyName || ""}\nPoints to query\n\n${activeFindings().map((f, i) => `${i + 1}. ${f.point}${f.documents ? ` (${f.documents})` : ""}`).join("\n")}`, e.target); });
 }
 // Everything the Hub knows about the batch, as text
 function reviewText(){
