@@ -21,6 +21,10 @@ header .rolesel{background:#1d3550;color:#fff;border:1px solid rgba(255,255,255,
 .sec > h3{margin:0 -18px 16px;padding:11px 18px;font-size:13px;text-transform:uppercase;letter-spacing:.4px;color:var(--sc,var(--accent));
   background:color-mix(in srgb, var(--sc,var(--accent)) 8%, var(--surface));border-bottom:1px solid color-mix(in srgb, var(--sc,var(--accent)) 18%, var(--line))}
 .sec.scantop{padding-top:14px}
+.fasttg{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer;box-shadow:var(--shadow)}
+.fasttg input{width:16px;height:16px;accent-color:var(--accent)}
+.lines.fastlines{min-width:900px}
+.lines th.req::after{content:" *";color:var(--crit)}
 
 .sec.s-rev{--sc:#9333ea}.sec.s-bud{--sc:#0e7490}.sec.s-ctl{--sc:#1d4e89}.sec.s-sum{--sc:#0f8a80}.sec.s-lines{--sc:#7c3aed}.sec.s-docs{--sc:#b45309}.sec.s-chk{--sc:#b91c1c}.sec.s-hist{--sc:#64748b}
 @media (prefers-color-scheme:dark){.sec.s-rev{--sc:#c084fc}.sec.s-bud{--sc:#38bdf8}.sec.s-ctl{--sc:#6f9bf5}.sec.s-sum{--sc:#3cc2b6}.sec.s-lines{--sc:#a98bf5}.sec.s-docs{--sc:#eaa24f}.sec.s-chk{--sc:#f87171}.sec.s-hist{--sc:#98a2b0}}
@@ -373,6 +377,11 @@ function render(){
 /* ---------------- shared bits ---------------- */
 const MIGRATED = "Migrated from spreadsheet";
 const isMigrated = b => b && b.CaptureMethod === MIGRATED;
+// Fast entry: only the old register spreadsheet's columns, no checks; saved straight into the register (like migrated rows)
+const FAST = "Fast entry";
+const isFast = b => b && b.CaptureMethod === FAST;
+const fastPref = () => { try { return localStorage.getItem("dpmFastEntry") === "1"; } catch { return false; } };
+const setFastPref = on => { try { localStorage.setItem("dpmFastEntry", on ? "1" : "0"); } catch {} };
 const pill = (s, map = STATUS_PILL) => s ? `<span class="pill ${map[s] || "p-grey"}">${esc(s)}</span>` : "";
 const batchLines = ref => S.lines.filter(l => l.BatchRef === ref);
 const sumOf = (arr, k) => r2(arr.reduce((a, x) => a + num(x[k]), 0));
@@ -660,16 +669,18 @@ function openBatch(id, mode = "manual"){
     if (!canEnter()){ tell(`Your role (${me.role}) can't enter batches.`); go("batches"); return; }
     ed = { b:{ BatchStatus:"Draft", BatchKind:"Agency batch", ReceivedDate:TODAY, FormType:"Offline Payment (Special Pay)", CaptureMethod:"Manual entry" }, lines:[blankLine()], removed:[], docs:[], isNew:true, auto:new Set(), scan:newScan(), mode,
       defaults:new Set(["BatchKind","FormType"]) };   // starting values a scan may replace
+    if (mode === "manual" && fastPref()){ ed.fast = true; ed.b.CaptureMethod = FAST; }
   } else {
     const b = S.batches.find(x => String(x.id) === String(id));
     if (!b){ tell("That batch wasn't found - it may have been removed."); go("batches"); return; }
     ed = { b:{ ...b }, lines: batchLines(b.Title).sort((x, y) => String(x.Title).localeCompare(String(y.Title))).map(l => ({ ...l, MarkedPaid: l.LineStatus === "Held - marked paid" })), removed:[], docs:null, auto:new Set(), scan:newScan(), mode:"manual" };
     if (!ed.lines.length) ed.lines = [blankLine()];
+    ed.fast = isFast(b);
     loadDocs();
   }
   ed.dirty = false; render();
 }
-const editable = () => ed && canEnter() && ["Draft","Submitted for check"].includes(ed.b.BatchStatus || "Draft");
+const editable = () => ed && canEnter() && (["Draft","Submitted for check"].includes(ed.b.BatchStatus || "Draft") || (isFast(ed.b) && ed.b.BatchStatus === "Accepted"));
 
 function field([k, label, type = "text", req, ph]){
   const v = ed.b[k] ?? "", cls = type === "agency" || k === "SummaryRef" || k === "PAOfficer" ? "w2" : "";
@@ -714,7 +725,9 @@ function renderEditor(banner){
   document.body.classList.toggle("scanmode", scanMode);
   const head = `
     <div class="edhead"><button class="btn" id="back">← Batches</button><h2>${esc(b.Title || (scanMode ? "New scanned batch" : "New batch"))}</h2>${pill(b.BatchStatus || "Draft")}${pack ? ` <span class="pill p-info">Endorsement pack</span>` : ""}
-      <span class="sub">${b.AgencyName ? esc(b.AgencyName) : ""}${b.PayNo ? " · Pay " + esc(b.PayNo) : ""}${b.ResubmissionOf ? " · resubmission of " + esc(b.ResubmissionOf) : ""}</span></div>
+      <span class="sub">${b.AgencyName ? esc(b.AgencyName) : ""}${b.PayNo ? " · Pay " + esc(b.PayNo) : ""}${b.ResubmissionOf ? " · resubmission of " + esc(b.ResubmissionOf) : ""}</span>
+      ${!scanMode && !b.id && !b.ResubmissionOf ? `<span class="grow" style="flex:1"></span><label class="fasttg" title="Only the columns of the old register spreadsheet, no checks - saved straight into the register"><input type="checkbox" id="fastTg" ${ed.fast ? "checked" : ""}> <b>Fast entry</b> <span class="note">spreadsheet columns only, no checks</span></label>`
+        : isFast(b) ? ` <span class="pill p-info">Fast entry</span>` : ""}</div>
     ${b.BatchStatus === "Rejected" || b.BatchStatus === "Returned to agency" ? `<div class="banner err"><b>Rejected</b>${b.AcceptedBy ? " by " + esc(b.AcceptedBy) + " on " + fmtDate(b.AcceptedDate) : ""}${b.ReturnedDate ? " · returned to agency " + fmtDate(b.ReturnedDate) : ""}<div style="white-space:pre-wrap;margin-top:6px">${esc(b.RejectionReasons)}</div></div>` : ""}
     ${isMigrated(b) ? `<div class="banner"><b>From the old register</b> (${esc(b.SourceSheet || "")}) - imported as it was typed, not checked against the paper documents.<div style="white-space:pre-wrap;margin-top:6px">${esc(b.BatchNotes || "")}</div></div>` : ""}`;
   const form = `    <div id="edForm" class="${can ? "" : "readonly"}">
@@ -739,6 +752,7 @@ function renderEditor(banner){
   const lists = `<datalist id="dlAg">${S.agencies.filter(a => a.AgencyActive !== "No").map(a => `<option value="${esc(a.Title)}">`).join("")}</datalist>
     <datalist id="dlRegions">${lines(setting("DPMRegions")).map(r => `<option value="${esc(r)}">`).join("")}</datalist>
     <datalist id="dlPay">${S.paycodes.map(p => `<option value="${esc(p.Title)}">${esc(p.CodeDescription || "")}</option>`).join("")}</datalist>`;
+  if (ed.fast && !scanMode){ $("#main").innerHTML = banner + head + fastFormHtml(can, events) + lists; if (!can) $$("#edForm input, #edForm select, #edForm textarea").forEach(x => x.disabled = true); bindEditor(); bindFast(); return; }
   if (scanMode && !ed.scan.pages.length){ $("#main").innerHTML = banner + head + scanStartHtml() + lists; bindScanStart(); return; }
   $("#main").innerHTML = banner + head + (scanMode ? `${scanTopHtml()}<div class="split"><div class="left">${form}</div><div class="right">${viewPaneHtml()}</div></div>` : form) + lists;
   if (!can) $$("#edForm input, #edForm select, #edForm textarea").forEach(x => x.disabled = true);
@@ -748,6 +762,57 @@ function bindScanStart(){
   $("#back").onclick = async () => { if (ed.dirty && !(await leaveUnsaved())) return; ed = null; go("batches"); route(); };
   bindScan();
 }
+/* ---------------- fast entry ---------------- */
+function fastRow(l, i){
+  const t = (k, w, list, ph) => `<input data-l="${i}" data-k="${k}" value="${esc(l[k])}" ${list ? `list="${list}"` : ""} ${ph ? `placeholder="${ph}"` : ""} style="min-width:${w}px">`;
+  const n = k => `<input class="n m" type="number" step="0.01" data-l="${i}" data-k="${k}" value="${esc(l[k])}">`;
+  return `<tr data-row="${i}"><td class="rn">${i+1}</td><td>${t("EmployeeNo", 100)}</td><td>${t("EmployeeName", 220)}</td><td>${t("PeriodText", 200, "", "e.g. 01/01/2025 to 31/12/2025")}</td>
+    <td>${t("PayCode", 80, "dlPay")}</td><td>${n("Gross")}</td><td>${n("Tax")}</td><td>${n("Net")}</td><td><button class="x" data-del="${i}" title="Remove line">×</button></td></tr>`;
+}
+function fastFormHtml(can, events){
+  const b = ed.b;
+  return `<div id="edForm" class="${can ? "" : "readonly"} fast">
+    <div class="sec s-ctl"><h3>Fast entry - the register spreadsheet's columns</h3>
+      <div class="fg">${field(["AgencyName","Agency (Department)","agency",1])}${field(["TransactionType","Transaction Type","ttype",1])}${field(["PayNo","Pay No","text",0,"23/26"])}${field(["ReceivedDate","Date Received by DPM","date"])}
+        <label class="fld w3"><span>Notes</span><textarea data-f="BatchNotes">${esc(b.BatchNotes)}</textarea></label></div></div>
+    <div class="sec s-lines"><h3>Payment lines</h3>
+      <div class="tablewrap" style="box-shadow:none"><table class="lines fastlines"><thead><tr><th>#</th><th class="req">Emp / File No</th><th class="req">Name</th><th>Period</th><th>Pay type</th><th class="req">Gross</th><th>Tax</th><th>Net</th><th></th></tr></thead>
+      <tbody id="lnBody">${ed.lines.map(fastRow).join("")}</tbody>
+      <tfoot><tr><td colspan="5">Totals (${ed.lines.length} line${ed.lines.length === 1 ? "" : "s"})</td><td id="tG">${kina(sumOf(ed.lines, "Gross"))}</td><td id="tT">${kina(sumOf(ed.lines, "Tax"))}</td><td id="tN">${kina(sumOf(ed.lines, "Net"))}</td><td></td></tr></tfoot></table></div>
+      ${can ? `<div style="margin-top:10px"><button class="btn" id="addLn">+ Add line</button> <span class="note">Net is worked out as gross - tax. Press Enter in the last box of a line to start the next one.</span></div>` : ""}</div>
+    <div class="sec s-docs"><h3>Documents (optional)</h3><div id="docBox">${docsHtml()}</div></div>
+    ${events.length ? `<div class="sec s-hist"><h3>History</h3><ul class="list hist">${events.map(e => `<li><span class="id mono">${esc(String(e.EventOn || "").replace("T", " "))}</span><span class="x"><b>${esc(e.EventType)}</b> - ${esc(e.EventBy)}${e.Details ? `<div class="note" style="white-space:pre-wrap">${esc(e.Details)}</div>` : ""}</span></li>`).join("")}</ul></div>` : ""}
+    </div>
+    <div class="actions"><span class="note" id="actNote">${!canEnter() ? "Read only for your role." : b.id ? `Fast entry - in the register since ${fmtDate(b.AcceptedDate)}. Changes are saved straight to the register.` : "Fast entry - not checked. Saved straight into the register and the dashboard totals."}</span><span class="grow"></span>
+      ${can ? `<button class="btn primary" id="fSave">${b.id ? "Save changes" : "Save to register"}</button>` : ""}</div>`;
+}
+function bindFast(){
+  $("#fSave")?.addEventListener("click", saveFast);
+  // Enter in a line's last box adds the next line
+  $("#lnBody")?.addEventListener("keydown", e => {
+    if (e.key !== "Enter" || !e.target.dataset.l) return; e.preventDefault();
+    const i = +e.target.dataset.l;
+    if (i === ed.lines.length - 1 && ["Net","Tax"].includes(e.target.dataset.k)) $("#addLn")?.click();
+    else { const ins = [...$$("#lnBody input")], k = ins.indexOf(e.target); ins[k + 1]?.focus(); }
+  });
+}
+async function saveFast(){
+  const b = ed.b, a = matchAgency(b.AgencyName); if (a) b.AgencyName = a.Title;
+  const used = ed.lines.filter(l => ["EmployeeNo","EmployeeName","Gross","Tax","Net","PeriodText","PayCode"].some(k => l[k] !== "" && l[k] != null) || l.id);
+  const miss = [];
+  if (!String(b.AgencyName || "").trim()) miss.push("the agency");
+  if (!b.TransactionType) miss.push("the transaction type");
+  if (!used.length) miss.push("at least one payment line");
+  used.forEach((l, i) => { if (!(String(l.EmployeeNo || "").trim() || String(l.EmployeeName || "").trim()) || !(num(l.Gross) > 0)) miss.push(`line ${i + 1}: an employee number or name, and the gross`); });
+  if (miss.length) return tell(`Fast entry still needs:\n\n${[...new Set(miss)].join("\n")}`, { title:"Save to register" });
+  used.forEach(l => { if (l.Net === "" || l.Net == null) l.Net = r2(num(l.Gross) - num(l.Tax)); if (l.EmployeeNo) l.EmployeeNo = String(l.EmployeeNo).trim().toUpperCase(); });
+  ed.lines = used;
+  const first = !b.id;
+  Object.assign(b, { CaptureMethod:FAST, BatchKind:"Agency batch", TotalGross:sumOf(used, "Gross"), TotalTax:sumOf(used, "Tax"), TotalNet:sumOf(used, "Net"), ReceivedDate: b.ReceivedDate || TODAY });
+  if (first){ b.AcceptedBy = me.name; b.AcceptedDate = TODAY; }
+  await saveBatch("Accepted", { fast:true, event: first ? "Recorded (fast entry)" : "Edited (fast entry)", details:`${used.length} line(s), ${kina(sumOf(used, "Gross"))} gross, ${kina(sumOf(used, "Net"))} net - not checked` });
+}
+
 // Migrated batches: the old register has no Batch Control Form or summary, so the entry checks don't apply.
 // Show what the migration flagged on each line instead.
 function migratedFlagsHtml(){
@@ -783,6 +848,7 @@ function actionButtons(nErr, own){
   return out.join(" ");
 }
 function refreshChecks(){
+  if (ed.fast){ $("#tG").textContent = kina(sumOf(ed.lines, "Gross")); $("#tT").textContent = kina(sumOf(ed.lines, "Tax")); $("#tN").textContent = kina(sumOf(ed.lines, "Net")); return; }
   const checks = checkBatch(ed.b, ed.lines, ed.docs);
   const errs = checks.filter(c => c.sev === "e"), bad = new Set(errs.filter(c => c.line != null).map(c => c.line));
   $("#chkSec").innerHTML = checksHtml(checks);
@@ -805,7 +871,7 @@ function bindEditor(){
     else if (t.dataset.l != null){ const l = ed.lines[+t.dataset.l], k = t.dataset.k; l._auto?.delete(k); l._edited = true; t.classList.remove("auto");
       if (t.type === "checkbox") l[k] = k === "MarkedPaid" ? t.checked : (t.checked ? "Yes" : "No"); else l[k] = t.value;
       // fill net from gross - tax when net is still empty
-      if ((k === "Gross" || k === "Tax") && l._autoNet !== false && (l.Net === "" || l._autoNet)){ if (l.Gross !== "" && l.Tax !== ""){ l.Net = r2(num(l.Gross) - num(l.Tax)); l._autoNet = true; const n = form.querySelector(`[data-l="${t.dataset.l}"][data-k="Net"]`); if (n) n.value = l.Net; } }
+      if ((k === "Gross" || k === "Tax") && l._autoNet !== false && (l.Net === "" || l._autoNet)){ if (l.Gross !== "" && (l.Tax !== "" || ed.fast)){ l.Net = r2(num(l.Gross) - num(l.Tax)); l._autoNet = true; const n = form.querySelector(`[data-l="${t.dataset.l}"][data-k="Net"]`); if (n) n.value = l.Net; } }
       if (k === "Net") l._autoNet = false;
       ed.dirty = true; refreshChecks(); }
   });
@@ -825,6 +891,7 @@ function bindEditor(){
   $("#aResub")?.addEventListener("click", startResubmission);
   bindDocs(); bindScan(); bindReview();
   $("#toScan")?.addEventListener("click", () => { ed.mode = "scan"; render(); scrollTo(0, 0); });
+  $("#fastTg")?.addEventListener("change", e => { ed.fast = e.target.checked; setFastPref(ed.fast); ed.b.CaptureMethod = ed.fast ? FAST : "Manual entry"; keepScroll(render); });
 }
 
 /* ---------------- numbering ---------------- */
@@ -870,7 +937,7 @@ async function saveBatch(newStatus, opts = {}){
     if (!b.Title) b.Title = await nextRef();
     if (wasNew){ b.EnteredBy = me.name; b.EnteredDate = TODAY; }
     if (newStatus) b.BatchStatus = newStatus; else b.BatchStatus = prev;
-    const checks = checkBatch(b, ed.lines, ed.docs), errs = checks.filter(c => c.sev === "e");
+    const checks = opts.fast ? [] : checkBatch(b, ed.lines, ed.docs), errs = checks.filter(c => c.sev === "e");
     if (newStatus === "Submitted for check" && errs.length) throw new Error("fix the errors first");
     if (newStatus === "Accepted" && errs.length) throw new Error("every check must pass before accepting");
     const lineErr = i => errs.filter(c => c.line === i).map(c => c.rule);
