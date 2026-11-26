@@ -75,6 +75,9 @@ table.reg td,table.reg th{white-space:nowrap}
 table.reg td.ag{white-space:normal;min-width:190px;max-width:280px}
 table.reg td:nth-child(5){white-space:normal;min-width:140px}
 table.reg .r{text-align:right}
+table.reg tr.why td{white-space:normal;border-top:0;padding-top:0;padding-bottom:10px;font-size:13px;color:var(--warn)}
+table.reg tr:has(+ tr.why) td{border-bottom:0}
+table.reg .whytag{display:inline-block;font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.3px;background:var(--warn-bg);color:var(--warn);border-radius:4px;padding:1px 6px;margin-right:6px}
 #printHead{display:none}
 @media print{
   @page{size:A4 landscape;margin:10mm}
@@ -92,6 +95,8 @@ table.reg .r{text-align:right}
   table.reg .note{color:#444!important;font-size:7pt}
   table.reg .pill{background:none!important;border:0!important;padding:0!important;color:#000!important;font-weight:400}
   table.reg tr.rowsum td{font-weight:700;border-top:2px solid #000}
+  table.reg tr.why td{font-size:7.5pt;color:#000!important;font-style:italic}
+  table.reg .whytag{background:none!important;color:#000!important;padding:0!important}
 }
 /* two ways in: manual batch / scanned batch */
 header nav .navsep{width:1px;align-self:stretch;background:rgba(255,255,255,.25);margin:6px 6px}
@@ -481,7 +486,7 @@ function registerRows(){
 }
 const REG_COLS = [["BatchRef","Batch Ref"],["AgencyName","Agency"],["TransactionType","Transaction Type"],["EmployeeNo","Employee / File No"],["EmployeeName","Employee Name"],
   ["NatureOfClaim","Nature of Claim"],["PayCode","Pay Code"],[l => l.PeriodFrom ? `${fmtDate(l.PeriodFrom)} to ${fmtDate(l.PeriodTo)}` : l.PeriodText, "Period"],
-  ["Gross","Gross"],["Tax","Tax"],["Net","Net"],["PayNo","Pay No"],[l => l._b.BatchStatus, "Batch Status"],["LineStatus","Line Status"],[l => l._b.WeekEnding, "Week Ending"]];
+  ["Gross","Gross"],["Tax","Tax"],["Net","Net"],["PayNo","Pay No"],[l => l._b.BatchStatus, "Batch Status"],["LineStatus","Line Status"],[l => whyText(l), "Query Reason"],[l => l._b.WeekEnding, "Week Ending"]];
 function viewRegister(){
   const f = F.r, all = registerRows();
   // Totals leave out superseded copies (repeated blocks kept only for the record)
@@ -501,10 +506,19 @@ function viewRegister(){
     <div class="tablewrap"><table class="reg"><thead><tr><th>Batch</th><th>Agency</th><th>Transaction</th><th>Emp / File No</th><th>Name</th><th>Period</th><th class="r">Gross</th><th class="r">Tax</th><th class="r">Net</th><th>Line</th><th>Batch status</th></tr></thead>
     <tbody>${rows.slice(0, F.r.printAll ? Infinity : 1000).map(l => `<tr data-openref="${esc(l.BatchRef)}"><td class="mono">${esc(l.BatchRef)}</td><td class="ag">${esc(l.AgencyName)}</td><td>${esc(l.TransactionType)}${l.NatureOfClaim ? `<div class="note">${esc(l.NatureOfClaim)}${l.PaymentCategory ? " · " + esc(l.PaymentCategory) : ""}</div>` : ""}</td>
       <td class="mono">${esc(l.EmployeeNo)}</td><td>${esc(l.EmployeeName)}</td><td class="mono">${l.PeriodFrom ? fmtDate(l.PeriodFrom) + " – " + fmtDate(l.PeriodTo) : esc(l.PeriodText)}</td>
-      <td class="mono r">${kina(l.Gross)}</td><td class="mono r">${kina(l.Tax)}</td><td class="mono r">${kina(l.Net)}</td><td>${pill(l.LineStatus, LINE_PILL)}</td><td>${pill(l._b.BatchStatus)}</td></tr>`).join("") || `<tr><td colspan="11" class="empty">No payment lines match.</td></tr>`}
+      <td class="mono r">${kina(l.Gross)}</td><td class="mono r">${kina(l.Tax)}</td><td class="mono r">${kina(l.Net)}</td><td>${pill(l.LineStatus, LINE_PILL)}</td><td>${pill(l._b.BatchStatus)}</td></tr>${whyRow(l)}`).join("") || `<tr><td colspan="11" class="empty">No payment lines match.</td></tr>`}
     ${rows.length ? `<tr class="rowsum"><td colspan="6">${rows.length} line(s)${rows.length > 1000 && !F.r.printAll ? " - first 1,000 shown; Print and Export include all" : ""}${esc(supNote)}</td><td class="mono r">${tot("Gross")}</td><td class="mono r">${tot("Tax")}</td><td class="mono r">${tot("Net")}</td><td colspan="2"></td></tr>` : ""}</tbody></table></div>`;
 }
 // What the printout covers, in words
+// Why a line is queried (or held): its flags, shown on a row under it
+function whyText(l){
+  return lines(l.ValidationFlags).join("; ") || (l.LineStatus === "Held - marked paid" ? 'Marked "Paid" by hand - held'
+    : l.LineStatus === "Rejected" && l._b?.RejectionReasons ? "Batch rejected: " + lines(l._b.RejectionReasons).join("; ") : "");
+}
+function whyRow(l){
+  const w = whyText(l); if (!w || !["Query","Held - marked paid","Rejected"].includes(l.LineStatus)) return "";
+  return `<tr class="why" data-openref="${esc(l.BatchRef)}"><td></td><td colspan="10"><span class="whytag">Why</span> ${esc(w)}</td></tr>`;
+}
 function registerFilterText(){
   const f = F.r, parts = [];
   if (f.agency) parts.push(f.agency);
