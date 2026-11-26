@@ -1756,13 +1756,13 @@ async function readPages(idx){
         try {
           const g = await callReader(p, true), fs = lineSense(f), gs = lineSense(g);
           const ok = x => Math.abs(num(x.gross) - num(x.tax) - num(x.net)) <= 0.05;
-          if (gs > fs){ f = g; sc.notes.push(`Page ${p.n}: some lines didn't add up - a second look (stronger model) read them better; check the highlighted lines`); }
+          if (gs > fs){ f = g; sc.notes.push(`Page ${p.n}: some lines didn't add up - a second, closer reading got them right; check the highlighted lines`); }
           else {
             let fixed = 0;
             f.summary.lines = f.summary.lines.map(x => { if (ok(x)) return x;
               const y = (g.summary?.lines || []).find(z => (x.employeeNo && empKey(z.employeeNo) === empKey(x.employeeNo)) || (x.employeeName && norm(z.employeeName) === norm(x.employeeName)));
               if (y && ok(y)){ fixed++; return { ...x, gross:y.gross, tax:y.tax, net:y.net }; } return x; });
-            if (fixed) sc.notes.push(`Page ${p.n}: ${fixed} line(s) didn't add up - figures taken from a second look (stronger model); check them`);
+            if (fixed) sc.notes.push(`Page ${p.n}: ${fixed} line(s) didn't add up - figures taken from a second, closer reading; check them`);
           }
         } catch(e){ sc.notes.push(`Page ${p.n}: the second look didn't run (${e.message})`); }
       }
@@ -1808,10 +1808,10 @@ const canReview = () => readOn() && editable() && !isMigrated(ed.b);
 const reviewShown = () => !quietChecks() && (reviewData() || lines(ed.b.ReadNotes).length || canReview());
 function reviewHtml(){
   const r = reviewData(), notes = lines(ed.b.ReadNotes), cls = { Query:"e", Check:"w", Note:"n" };
-  return `<h3>Points to query <span class="note" style="text-transform:none;letter-spacing:0;font-weight:400">Claude's review of the whole batch - suggestions for the Checker, not decisions</span></h3>
+  return `<h3>Points to query <span class="note" style="text-transform:none;letter-spacing:0;font-weight:400">a review of the whole batch - suggestions for the Checker, not decisions</span></h3>
     ${r ? `${r.summary ? `<p>${esc(r.summary)}</p>` : ""}<ul class="chk">${activeFindings().map(f => `<li class="${cls[f.severity] || "w"}"><span class="tag">${esc(f.severity || "Check")}</span><span>${linkPages(f.point)}${f.documents ? `<div class="docref">${linkPages(f.documents)}</div>` : ""}</span>${dismissBtn(findingKey(f), "w", f.point)}</li>`).join("") || `<li><span class="okline">Nothing further to query.</span></li>`}</ul>
       <p class="note" style="margin-top:8px">Reviewed ${esc(r.at || "")} by ${esc(r.by || "")}. ${ed.dirty ? " Save the batch to keep it." : " Saved with the batch."}</p>`
-    : `<p class="note">${canReview() ? "When the batch is entered or read from the scan, <b>Review the batch</b> asks Claude to look across every document for anything to query: figures that don't agree between documents, dates out of order, salaries, rates or periods that don't match the contract or the date someone left, and matters missing from the pack." : "Not reviewed."}</p>`}
+    : `<p class="note">${canReview() ? "When the batch is entered or read from the scan, <b>Review the batch</b> looks across every document for anything to query: figures that don't agree between documents, dates out of order, salaries, rates or periods that don't match the contract or the date someone left, and matters missing from the pack." : "Not reviewed."}</p>`}
     <div class="revbar">${canReview() ? `<button class="btn primary" id="revGo" ${ed.revBusy ? "disabled" : ""}>${ed.revBusy ? "Reviewing… (up to 30 seconds)" : r ? "Review again" : "Review the batch"}</button>` : ""}
       ${r && r.findings.length ? `<button class="btn" id="revCopy">Copy the list</button>` : ""}</div>
     ${dismissedHtml()}
