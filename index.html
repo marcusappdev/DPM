@@ -1836,6 +1836,9 @@ function reviewText(){
   P.push(`Totals of the lines: gross ${kina(sumOf(ed.lines, "Gross"))}, tax ${kina(sumOf(ed.lines, "Tax"))}, net ${kina(sumOf(ed.lines, "Net"))}`);
   const checks = checkBatch(b, ed.lines, ed.docs).filter(c => c.rule !== "Read automatically");
   P.push("", "THE HUB'S AUTOMATIC CHECKS ALREADY SHOW (don't repeat these)", ...(checks.map(c => `- ${c.sev === "e" ? "Error" : "Check"}: ${c.rule} - ${c.msg}`)), checks.length ? "" : "- nothing");
+  // what the checker has already looked at and dismissed (or overridden) - the review mustn't raise these again
+  const dis = dismissedOf(b);
+  if (dis.length) P.push("", "ALREADY LOOKED AT BY THE CHECKER AND DISMISSED - do not raise these again, or anything that is the same point in other words", ...dis.map(d => `- ${d.text} (reason: ${d.reason})`));
   const rd = readDataOf(b);
   if (rd.length){ P.push("", "WHAT WAS READ FROM EACH SCANNED PAGE (JSON per page)"); rd.forEach(x => P.push(`Page ${x.page} - ${x.type}${x.employee ? " - employee " + x.employee : ""}: ${JSON.stringify(x.read)}`)); }
   else P.push("", "No scanned pages were read for this batch - review what was entered.");
@@ -1855,7 +1858,7 @@ function reviewSchema(){
 }
 const REVIEW_INSTRUCTIONS = `You are an experienced payroll checker at the PNG Department of Personnel Management reviewing one batch of offline payment claims before it is accepted.
 Below is everything the Hub has for the batch: what was entered, the payment lines, the Hub's automatic checks, and what was read from each scanned page.
-List what should be queried that the automatic checks do NOT already show. Look across ALL the documents together, for example:
+List what should be queried that the automatic checks do NOT already show, and that the checker has NOT already dismissed. Look across ALL the documents together, for example:
 - totals, gross, tax or net that differ between the cover letter or minute, the summary, the schedules, the pink forms and the calculation sheets (work the sums out; name the difference)
 - figures that look transposed or mistyped
 - dates out of logical order (e.g. a pink form prepared after DPM certified the summary, a letter dated before the figures it endorses were checked)
@@ -1874,7 +1877,8 @@ async function reviewBatch(){
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(r.status === 401 ? "the reading service didn't accept your sign-in" : r.status === 503 || r.status === 504 ? "the review took longer than 30 seconds - press Review again" : r.status === 400 && /image/i.test(j.error || "") ? "the AWS service hasn't been updated for reviews yet - see aws/README-AWS.md" : j.error || j.message || `review service error ${r.status}`);
     const f = j.fields || {};
-    const res = { at:`${TODAY} ${hhmm(new Date())}`, by:me.name, model:j.model || "", summary:f.summary || "", findings:(f.findings || []).filter(x => x && x.point).slice(0, 12) };
+    const gone = new Set(dismissedOf(ed.b).map(d => d.key));
+    const res = { at:`${TODAY} ${hhmm(new Date())}`, by:me.name, model:j.model || "", summary:f.summary || "", findings:(f.findings || []).filter(x => x && x.point && !gone.has(findingKey(x))).slice(0, 12) };
     const wasClean = !ed.dirty;
     ed.b.ReviewFindings = JSON.stringify(res); ed.b.ReviewedOn = res.at; ed.b.ReviewedBy = me.name; ed.dirty = true;
     ed.revBusy = false;
